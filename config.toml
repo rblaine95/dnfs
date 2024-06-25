@@ -1,0 +1,8 @@
+[dnfs]
+domainName = "bunkerlab.net"
+
+[cloudflare]
+accountId = "changeme"
+apiKey = "changeme"
+email = "changeme"
+zoneId = "changeme"
