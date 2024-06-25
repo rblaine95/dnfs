@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, path::Path};
 
 use anyhow::{anyhow, Result};
 use securefmt::Debug;
@@ -12,7 +12,7 @@ use trust_dns_resolver::{
     AsyncResolver, TokioAsyncResolver,
 };
 
-const EXPECTED_AGREEMENT: &str = "I understand that DNFS is a terrible idea and I promise I will never use it for anything important ever";
+const USAGE_AGREEMENT: &str = "I understand that DNFS is a terrible idea and I promise I will never use it for anything important ever";
 const MAX_CHUNK_SIZE: usize = 2048;
 // const SEPARATOR: &str = "|";
 
@@ -22,6 +22,7 @@ struct File {
     extension: Option<String>,
     mime: Option<String>,
     name: String,
+    sha256: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -32,13 +33,19 @@ struct Chunk {
 }
 
 impl File {
-    fn new(path: &str) -> Result<Self> {
+    fn new(path: &Path) -> Result<Self> {
         let data = std::fs::read(path)?;
-        let extension = path.split('.').last().map(str::to_string);
+        let extension = path
+            .extension()
+            .map(|ext| ext.to_string_lossy().into_owned());
         let mime = mime_guess::from_path(path)
             .first()
             .map(|mime| mime.essence_str().to_string());
-        let name = path.split('/').last().unwrap_or(path).to_string();
+        let name = path.file_name().map_or_else(
+            || "unnamed".to_string(),
+            |name| name.to_string_lossy().into_owned(),
+        );
+        let sha256 = sha256::digest(data.as_slice()).to_string();
 
         // Ensure that the data is split into chunks of at most 2048 bytes
         // We need to subtract:
@@ -58,6 +65,7 @@ impl File {
             extension,
             mime,
             name,
+            sha256,
         })
     }
 }
@@ -110,7 +118,7 @@ async fn check_usage_agreement(
         .flat_map(TXT::txt_data)
         .find_map(|txt_data| {
             std::str::from_utf8(txt_data).ok().and_then(|s| {
-                if s.starts_with(EXPECTED_AGREEMENT) {
+                if s.starts_with(USAGE_AGREEMENT) {
                     info!("Valid DNFS usage agreement found");
                     Some(Ok(()))
                 } else {
@@ -140,7 +148,8 @@ async fn main() -> Result<()> {
         .init();
 
     // Load config
-    let config: Config = toml::from_str(std::fs::read_to_string("config.toml")?.as_str())?;
+    let config: Config =
+        toml::from_str(std::fs::read_to_string(Path::new("config.toml"))?.as_str())?;
     debug!("{config:?}");
 
     let resolver =
@@ -149,12 +158,11 @@ async fn main() -> Result<()> {
     // Check usage agreement
     if let Err(e) = check_usage_agreement(&config.dnfs.domain_name, &resolver).await {
         error!("Error checking usage agreement: {}", e);
-        // You can choose to exit here or handle the error in another way
         std::process::exit(1);
     }
 
     // Read `rfc1464.txt` into a `File` struct
-    let rfc1464 = File::new("rfc1464.txt")?;
+    let rfc1464 = File::new(Path::new("rfc1464.txt"))?;
     println!("{rfc1464:?}");
 
     Ok(())
