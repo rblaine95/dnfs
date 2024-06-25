@@ -34,6 +34,11 @@ struct Chunk {
 
 impl File {
     fn new(path: &Path) -> Result<Self> {
+        let name = path
+            .file_name()
+            .ok_or_else(|| anyhow!("Invalid file name"))?
+            .to_string_lossy()
+            .into_owned();
         let data = std::fs::read(path)?;
         let extension = path
             .extension()
@@ -41,10 +46,6 @@ impl File {
         let mime = mime_guess::from_path(path)
             .first()
             .map(|mime| mime.essence_str().to_string());
-        let name = path.file_name().map_or_else(
-            || "unnamed".to_string(),
-            |name| name.to_string_lossy().into_owned(),
-        );
         let sha256 = sha256::digest(data.as_slice()).to_string();
 
         // Ensure that the data is split into chunks of at most 2048 bytes
