@@ -33,10 +33,24 @@ Listing data will be done over DNS lookups too.
 We want to:
 1. Read an input file
 2. Compress the file
-3. Encrypt the file - output is a Vec<u8>
+3. Encrypt the file - output is a `Vec<u8>`
 4. Split the file into chunks of 2048 characters
 5. Upload the chunks to Cloudflare TXT records
 6. Download the chunks from Cloudflare TXT records
 7. Decrypt the chunks
 8. Decompress the chunks
 9. Write the output file
+
+https://datatracker.ietf.org/doc/html/rfc1035
+
+Records will be structured as such:
+* `file.dnfs.example.com` - `v=DNFS1 chunks=<number of chunks> size=<size of each chunk> hash=<SHA256 of full content>`
+* `chunk1.file.dnfs.example.com` - `"1|<first 255 characters>" "<next 255 characters>" ... "<last characters of chunk>"`
+* `chunk2.file.dnfs.example.com` - `"2|<first 255 characters>" "<next 255 characters>" ... "<last characters of chunk>"`
+* `meta.file.dnfs.example.com` - optional metadata about the file
+    * Title - title of the file
+    * Description - description of the file
+    * Author - author of the file
+    * Created - date the file was created
+    * Mime - MIME type of the file
+    * Extension - file extension
