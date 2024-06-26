@@ -1,3 +1,4 @@
+// This is extremely safe, it says so right here!
 #![forbid(unsafe_code)]
 
 use std::path::Path;

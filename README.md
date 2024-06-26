@@ -1,3 +1,5 @@
+![Static Badge](https://img.shields.io/badge/unsafe-forbidden-red)
+
 Notes:
 
 Cloudflare TXT records have a maximum length of 2048 characters.
