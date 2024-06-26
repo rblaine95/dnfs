@@ -1,6 +1,13 @@
-use std::{collections::BTreeMap, path::Path};
+#![forbid(unsafe_code)]
+
+use std::path::Path;
 
 use anyhow::{anyhow, Result};
+use base64::prelude::*;
+use cloudflare::{
+    endpoints::dns,
+    framework::{async_api, auth, Environment, HttpApiClientConfig},
+};
 use securefmt::Debug;
 use serde_derive::{Deserialize, Serialize};
 use thiserror::Error;
@@ -14,18 +21,17 @@ use trust_dns_resolver::{
 
 const USAGE_AGREEMENT: &str = "I understand that DNFS is a terrible idea and I promise I will never use it for anything important ever";
 const MAX_CHUNK_SIZE: usize = 2048;
-// const SEPARATOR: &str = "|";
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone)]
 struct File {
     data: Vec<Chunk>,
     extension: Option<String>,
-    mime: Option<String>,
+    mime: String,
     name: String,
     sha256: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone)]
 struct Chunk {
     #[sensitive]
     data: Vec<u8>,
@@ -43,20 +49,15 @@ impl File {
         let extension = path
             .extension()
             .map(|ext| ext.to_string_lossy().into_owned());
-        let mime = mime_guess::from_path(path)
-            .first()
-            .map(|mime| mime.essence_str().to_string());
+        let mime = mime_guess::from_path(path).first().map_or_else(
+            || "application/octet-stream".to_string(),
+            |mime| mime.essence_str().to_string(),
+        );
         let sha256 = sha256::digest(data.as_slice()).to_string();
-
-        // Ensure that the data is split into chunks of at most 2048 bytes
-        // We need to subtract:
-        // - 1 byte for the separator
-        // - 2 bytes for the chunk index (0-99)
-        let chunk_size = MAX_CHUNK_SIZE - 1 - 2;
 
         Ok(Self {
             data: data
-                .chunks(chunk_size)
+                .chunks(MAX_CHUNK_SIZE)
                 .enumerate()
                 .map(|(index, data)| Chunk {
                     data: data.to_vec(),
@@ -69,15 +70,142 @@ impl File {
             sha256,
         })
     }
+
+    async fn upload(
+        &self,
+        cf_client: &async_api::Client,
+        zone_identifier: &str,
+        domain_name: &str,
+    ) -> Result<String> {
+        // Create File Record
+        let file_record = FileRecord::create(self);
+        cf_client
+            .request(&dns::CreateDnsRecord {
+                zone_identifier,
+                params: dns::CreateDnsRecordParams {
+                    name: format!("{name}.dnfs.{domain_name}", name = file_record.name).as_str(),
+                    content: dns::DnsContent::TXT {
+                        content: format!(
+                            "v={version} chunks={chunks} size={size} sha256hash={sha256}",
+                            version = file_record.version,
+                            chunks = file_record.chunks,
+                            size = file_record.size,
+                            sha256 = file_record.sha256,
+                        ),
+                    },
+                    priority: None,
+                    proxied: None,
+                    ttl: None,
+                },
+            })
+            .await?;
+
+        // Create File Chunks
+        for chunk in &self.data {
+            let chunk_name = format!(
+                "chunk{index}.{name}.dnfs.{domain_name}",
+                index = chunk.index,
+                name = file_record.name,
+            );
+            let base64_data = BASE64_STANDARD.encode(&chunk.data);
+            cf_client
+                .request(&dns::CreateDnsRecord {
+                    zone_identifier,
+                    params: dns::CreateDnsRecordParams {
+                        name: &chunk_name,
+                        content: dns::DnsContent::TXT {
+                            content: base64_data,
+                        },
+                        priority: None,
+                        proxied: None,
+                        ttl: None,
+                    },
+                })
+                .await?;
+        }
+
+        // Create meta record
+        let meta_record = MetaRecord::create(self);
+        cf_client
+            .request(&dns::CreateDnsRecord {
+                zone_identifier,
+                params: dns::CreateDnsRecordParams {
+                    name: format!("meta.{name}.dnfs.{domain_name}", name = file_record.name)
+                        .as_str(),
+                    content: dns::DnsContent::TXT {
+                        content: format!(
+                            "mime={mime} extension={extension}",
+                            mime = meta_record.mime,
+                            extension = meta_record.extension.unwrap_or_default(),
+                        ),
+                    },
+                    priority: None,
+                    proxied: None,
+                    ttl: None,
+                },
+            })
+            .await?;
+
+        let file_fqdn = format!(
+            "{name}.dnfs.{domain_name}",
+            name = file_record.name,
+            domain_name = domain_name
+        );
+
+        Ok(file_fqdn)
+    }
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
-struct Dir {
-    /// A map of File/Directory names to their corresponding Cloudflare TXT record IDs
-    content: BTreeMap<String, String>,
+#[derive(Debug, Clone)]
+struct FileRecord {
+    chunks: usize,
     name: String,
+    sha256: String,
+    size: usize,
+    version: String,
 }
 
+impl FileRecord {
+    fn create(file: &File) -> Self {
+        Self {
+            chunks: file.data.len(),
+            name: file.name.split('.').next().unwrap().to_string(),
+            sha256: file.sha256.clone(),
+            size: file.data.iter().map(|chunk| chunk.data.len()).sum(),
+            version: "DNFS1".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct MetaRecord {
+    author: Option<String>,
+    description: Option<String>,
+    extension: Option<String>,
+    mime: String,
+    title: Option<String>,
+}
+
+impl MetaRecord {
+    fn create(file: &File) -> Self {
+        Self {
+            author: None,
+            description: None,
+            extension: file.extension.clone(),
+            mime: file.mime.clone(),
+            title: None,
+        }
+    }
+}
+
+// #[derive(Debug, Clone)]
+// struct Dir {
+//     /// A map of File/Directory names to their corresponding Cloudflare TXT record IDs
+//     content: BTreeMap<String, String>,
+//     name: String,
+// }
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct Config {
     cloudflare: CloudflareConfig,
@@ -87,10 +215,8 @@ struct Config {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CloudflareConfig {
-    account_id: String,
     #[sensitive]
     api_key: String,
-    email: String,
     zone_id: String,
 }
 
@@ -99,6 +225,16 @@ struct CloudflareConfig {
 struct DNFSConfig {
     domain_name: String,
 }
+
+impl Config {
+    fn new(path: &Path) -> Result<Self> {
+        match toml::from_str(std::fs::read_to_string(path)?.as_str()) {
+            Ok(config) => Ok(config),
+            Err(e) => Err(anyhow!("Error parsing config file: {}", e)),
+        }
+    }
+}
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #[derive(Error, Debug)]
 pub enum DNFSError {
@@ -113,7 +249,6 @@ async fn check_usage_agreement(
     let usage_agreement_host = format!("_dnfs-agreement.{domain_name}");
     let usage_agreement = resolver.txt_lookup(usage_agreement_host).await?;
 
-    // #[allow(clippy::redundant_closure_for_method_calls)]
     usage_agreement
         .iter()
         .flat_map(TXT::txt_data)
@@ -149,9 +284,16 @@ async fn main() -> Result<()> {
         .init();
 
     // Load config
-    let config: Config =
-        toml::from_str(std::fs::read_to_string(Path::new("config.toml"))?.as_str())?;
+    let config = Config::new(Path::new("config.toml"))?;
     debug!("{config:?}");
+
+    let cf_client = async_api::Client::new(
+        auth::Credentials::UserAuthToken {
+            token: config.cloudflare.api_key,
+        },
+        HttpApiClientConfig::default(),
+        Environment::Production,
+    )?;
 
     let resolver =
         TokioAsyncResolver::tokio(ResolverConfig::cloudflare_tls(), ResolverOpts::default());
@@ -162,9 +304,20 @@ async fn main() -> Result<()> {
         std::process::exit(1);
     }
 
+    // Read `test.txt` into a `File` struct
+    let test = File::new(Path::new("test.txt"))?;
+
+    let test_upload = test
+        .upload(
+            &cf_client,
+            &config.cloudflare.zone_id,
+            &config.dnfs.domain_name,
+        )
+        .await?;
+    println!("{test_upload}");
+
     // Read `rfc1464.txt` into a `File` struct
-    let rfc1464 = File::new(Path::new("rfc1464.txt"))?;
-    println!("{rfc1464:?}");
+    // let rfc1464 = File::new(Path::new("rfc1464.txt"))?;
 
     Ok(())
 }

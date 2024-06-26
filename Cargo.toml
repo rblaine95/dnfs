@@ -5,7 +5,8 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
-# cloudflare = "0.11"
+base64 = "0.22"
+cloudflare = { version = "0.11", features = ["rustls-tls"] }
 mime_guess = "2.0"
 securefmt = "0.1"
 serde = "1.0"
