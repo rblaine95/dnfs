@@ -45,8 +45,8 @@ https://datatracker.ietf.org/doc/html/rfc1035
 
 Records will be structured as such:
 * `file.dnfs.example.com` - `v=DNFS1 chunks=<number of chunks> size=<size of each chunk> hash=<SHA256 of full content>`
-* `chunk1.file.dnfs.example.com` - `"1|<first 255 characters>" "<next 255 characters>" ... "<last characters of chunk>"`
-* `chunk2.file.dnfs.example.com` - `"2|<first 255 characters>" "<next 255 characters>" ... "<last characters of chunk>"`
+* `chunk0.file.dnfs.example.com` - `"<first 255 characters>" "<next 255 characters>" ... "<last characters of chunk>"`
+* `chunk1.file.dnfs.example.com` - `"<first 255 characters>" "<next 255 characters>" ... "<last characters of chunk>"`
 * `meta.file.dnfs.example.com` - optional metadata about the file
     * Title - title of the file
     * Description - description of the file
