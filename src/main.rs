@@ -243,6 +243,70 @@ pub enum DNFSError {
     InvalidUsageAgreement(String),
 }
 
+// Helper function to Write a TXT record
+// Checks if record already exists
+// If it does, update the record
+async fn write_txt_record(
+    name: &str,
+    content: &str,
+    cf_client: &async_api::Client,
+    zone_identifier: &str,
+) -> Result<String> {
+    debug!("Writing TXT record: {name:?}");
+    // Check if the record already exists
+    let records = cf_client
+        .request(&dns::ListDnsRecords {
+            zone_identifier,
+            params: dns::ListDnsRecordsParams {
+                name: Some(name.to_string()),
+                ..Default::default()
+            },
+        })
+        .await?;
+    let identifier = records.result.iter().find_map(|record| {
+        if record.name.eq(name) {
+            Some(record.id.clone())
+        } else {
+            None
+        }
+    });
+
+    if let Some(id) = identifier {
+        debug!("Existing Record for {name} found with ID: {id:?}");
+        let result = cf_client
+            .request(&dns::UpdateDnsRecord {
+                zone_identifier,
+                identifier: id.as_str(),
+                params: dns::UpdateDnsRecordParams {
+                    name,
+                    content: dns::DnsContent::TXT {
+                        content: content.to_string(),
+                    },
+                    proxied: None,
+                    ttl: None,
+                },
+            })
+            .await?;
+        Ok(result.result.name)
+    } else {
+        let result = cf_client
+            .request(&dns::CreateDnsRecord {
+                zone_identifier,
+                params: dns::CreateDnsRecordParams {
+                    name,
+                    content: dns::DnsContent::TXT {
+                        content: content.to_string(),
+                    },
+                    priority: None,
+                    proxied: None,
+                    ttl: None,
+                },
+            })
+            .await?;
+        Ok(result.result.name)
+    }
+}
+
 async fn check_usage_agreement(
     domain_name: &str,
     resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
