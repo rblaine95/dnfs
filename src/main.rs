@@ -21,7 +21,7 @@ use trust_dns_resolver::{
 };
 
 const USAGE_AGREEMENT: &str = "I understand that DNFS is a terrible idea and I promise I will never use it for anything important ever";
-const MAX_CHUNK_SIZE: usize = 2048;
+const MAX_CHUNK_SIZE: usize = 1024;
 
 #[derive(Debug, Clone)]
 struct File {
@@ -123,6 +123,8 @@ impl File {
         file_fqdn: &str,
         resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
     ) -> Result<File> {
+        debug!("Reading file: {file_fqdn}");
+
         let file_record = FileRecord::from_dns_record(file_fqdn, resolver).await?;
         let file_chunks = File::get_chunks(file_fqdn, &file_record, resolver).await?;
         let file_data = file_chunks.iter().fold(Vec::new(), |mut acc, chunk| {
@@ -162,33 +164,37 @@ impl File {
         file_record: &FileRecord,
         resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
     ) -> Result<Vec<Chunk>> {
+        debug!("Getting chunks for file: {file_fqdn}");
+
+        // use `file_fqdn` to get the domain name
+        // `file_name.dnfs.domain_name.tld`
+        let domain_name = file_fqdn.split(".dnfs.").last().unwrap();
+
+        debug!("Domain name: {domain_name}");
+
         let mut chunks = Vec::new();
-
-        let domain_name = file_fqdn
-            .split('.')
-            .skip(2)
-            .collect::<Vec<&str>>()
-            .join(".");
-
         for i in 0..file_record.chunks {
             let chunk_fqdn = format!(
                 "chunk{i}.{name}.dnfs.{domain_name}",
                 i = i,
                 name = file_record.name,
             );
+            debug!("Reading chunk {chunk_fqdn}");
 
             let chunk_lookup = resolver.txt_lookup(chunk_fqdn).await?;
-            let chunk_data = chunk_lookup
+
+            // Convert the full TXT record data from `Vec<u8>` to `&str`
+            let chunk_data: String = chunk_lookup
                 .iter()
                 .flat_map(TXT::txt_data)
-                .find_map(|txt_data| std::str::from_utf8(txt_data).ok())
-                .ok_or_else(|| anyhow!("Error parsing TXT record"))?;
+                .filter_map(|txt_data| std::str::from_utf8(txt_data).ok())
+                .collect();
+            debug!("Chunk data: {chunk_data:?}");
 
             let data = BASE64_STANDARD.decode(chunk_data.as_bytes())?;
-            chunks.push(Chunk {
-                data: data.clone(),
-                index: i,
-            });
+            debug!("Decoded data: {data:?}");
+
+            chunks.push(Chunk { data, index: i });
         }
 
         Ok(chunks)
@@ -290,6 +296,44 @@ impl FileRecord {
                 extension = self.extension.clone().unwrap_or_default());
         write_txt_record(&fqdn, &content, cf_client, zone_identifier).await
     }
+
+    async fn delete(
+        file_fqdn: &str,
+        cf_client: &async_api::Client,
+        zone_identifier: &str,
+        resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
+    ) -> Result<()> {
+        debug!("Deleting file: {file_fqdn}");
+        let identifier = get_record_id(file_fqdn, cf_client, zone_identifier).await;
+
+        if let Some(id) = identifier {
+            let file_record = FileRecord::from_dns_record(file_fqdn, resolver).await?;
+            let chunk_fqdns = (0..file_record.chunks)
+                .map(|i| format!("chunk{i}.{file_fqdn}",))
+                .collect::<Vec<String>>();
+            for chunk_fqdn in chunk_fqdns {
+                debug!("Deleting chunk: {chunk_fqdn}");
+                let chunk_id = get_record_id(chunk_fqdn.as_str(), cf_client, zone_identifier).await;
+                if let Some(id) = chunk_id {
+                    cf_client
+                        .request(&dns::DeleteDnsRecord {
+                            zone_identifier,
+                            identifier: id.as_str(),
+                        })
+                        .await?;
+                }
+            }
+            cf_client
+                .request(&dns::DeleteDnsRecord {
+                    zone_identifier,
+                    identifier: id.as_str(),
+                })
+                .await?;
+        } else {
+            return Err(anyhow!("Record not found"));
+        }
+        Ok(())
+    }
 }
 
 // #[derive(Debug, Clone)]
@@ -357,6 +401,27 @@ pub enum DNFSError {
     InvalidUsageAgreement(String),
 }
 
+async fn get_record_id(
+    name: &str,
+    cf_client: &async_api::Client,
+    zone_identifier: &str,
+) -> Option<String> {
+    cf_client
+        .request(&dns::ListDnsRecords {
+            zone_identifier,
+            params: dns::ListDnsRecordsParams {
+                name: Some(name.to_string()),
+                ..Default::default()
+            },
+        })
+        .await
+        .ok()?
+        .result
+        .iter()
+        .find(|record| record.name.eq(name))
+        .map(|record| record.id.clone())
+}
+
 // Helper function to Write a TXT record
 // Checks if record already exists
 // If it does, update the record
@@ -368,56 +433,41 @@ async fn write_txt_record(
 ) -> Result<String> {
     debug!("Writing TXT record: {name:?}");
     // Check if the record already exists
-    let records = cf_client
-        .request(&dns::ListDnsRecords {
-            zone_identifier,
-            params: dns::ListDnsRecordsParams {
-                name: Some(name.to_string()),
-                ..Default::default()
-            },
-        })
-        .await?;
-    let identifier = records.result.iter().find_map(|record| {
-        if record.name.eq(name) {
-            Some(record.id.clone())
-        } else {
-            None
-        }
-    });
+    let identifier = get_record_id(name, cf_client, zone_identifier).await;
 
     if let Some(id) = identifier {
         debug!("Existing Record for {name} found with ID: {id:?}");
-        let result = cf_client
-            .request(&dns::UpdateDnsRecord {
-                zone_identifier,
-                identifier: id.as_str(),
-                params: dns::UpdateDnsRecordParams {
-                    name,
-                    content: dns::DnsContent::TXT {
-                        content: content.to_string(),
-                    },
-                    proxied: None,
-                    ttl: None,
+        let request = dns::UpdateDnsRecord {
+            zone_identifier,
+            identifier: id.as_str(),
+            params: dns::UpdateDnsRecordParams {
+                name,
+                content: dns::DnsContent::TXT {
+                    content: content.to_string(),
                 },
-            })
-            .await?;
-        Ok(result.result.name)
+                proxied: None,
+                ttl: None,
+            },
+        };
+        debug!("Request: {request:?}");
+        let response = cf_client.request(&request).await?;
+        Ok(response.result.name)
     } else {
-        let result = cf_client
-            .request(&dns::CreateDnsRecord {
-                zone_identifier,
-                params: dns::CreateDnsRecordParams {
-                    name,
-                    content: dns::DnsContent::TXT {
-                        content: content.to_string(),
-                    },
-                    priority: None,
-                    proxied: None,
-                    ttl: None,
+        let request = dns::CreateDnsRecord {
+            zone_identifier,
+            params: dns::CreateDnsRecordParams {
+                name,
+                content: dns::DnsContent::TXT {
+                    content: content.to_string(),
                 },
-            })
-            .await?;
-        Ok(result.result.name)
+                priority: None,
+                proxied: None,
+                ttl: None,
+            },
+        };
+        debug!("Request: {request:?}");
+        let response = cf_client.request(&request).await?;
+        Ok(response.result.name)
     }
 }
 
@@ -576,6 +626,7 @@ mod tests {
 
         let file = File::read(file_fqdn, &resolver).await;
         assert!(file.is_ok());
+
         let file_data = file
             .unwrap()
             .data
