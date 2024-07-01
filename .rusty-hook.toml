@@ -1,6 +1,6 @@
 [hooks]
-pre-commit = "cargo clippy --all-targets --all-features -- -D warnings -Wclippy::pedantic"
-pre-push = "cargo fmt --all --check"
+pre-commit = "mise run lint"
+pre-push = "mise run fmt.check"
 
 [logging]
 verbose = true

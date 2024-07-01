@@ -1,0 +1,11 @@
+[tasks.lint]
+description = "Lint project"
+run = "cargo clippy --all-targets --all-features -- -D warnings -Wclippy::pedantic"
+
+[tasks.fmt]
+description = "Format project"
+run = "cargo fmt --all"
+
+[tasks."fmt.check"]
+description = "Check project format"
+run = "cargo fmt --all --check"
