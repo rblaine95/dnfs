@@ -106,6 +106,7 @@ pub async fn check_usage_agreement(
     domain_name: &str,
     resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
 ) -> Result<()> {
+    debug!("Checking DNFS usage agreement for {domain_name}");
     let usage_agreement_host = format!("_dnfs-agreement.{domain_name}");
     let usage_agreement = resolver.txt_lookup(usage_agreement_host.clone()).await?;
 
@@ -115,7 +116,7 @@ pub async fn check_usage_agreement(
         .find_map(|txt_data| {
             std::str::from_utf8(txt_data).ok().and_then(|s| {
                 if s.eq(USAGE_AGREEMENT) {
-                    info!("Valid DNFS usage agreement found");
+                    debug!("Valid DNFS usage agreement found");
                     Some(Ok(()))
                 } else {
                     warn!("Found TXT record, but it doesn't match. Found: {s}");
