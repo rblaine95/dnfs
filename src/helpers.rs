@@ -55,6 +55,7 @@ pub async fn get_record_id(
 }
 
 // Helper function to get all records under the `dnfs` subdomain
+// Returns a `Vec` of all records of File FQDNs
 pub async fn get_all_files(
     cf_client: &async_api::Client,
     zone_identifier: &str,

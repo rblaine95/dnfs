@@ -13,7 +13,7 @@ use trust_dns_resolver::{
 
 use crate::{
     file::File,
-    helpers::{get_record_id, write_txt_record, DNFSError},
+    helpers::{get_all_files, get_record_id, write_txt_record, DNFSError},
 };
 
 #[derive(Debug, Clone)]
@@ -146,6 +146,18 @@ impl FileRecord {
                 .await?;
         } else {
             return Err(DNFSError::RecordNotFound(file_fqdn.to_string()).into());
+        }
+        Ok(())
+    }
+
+    pub async fn purge(
+        cf_client: &async_api::Client,
+        zone_identifier: &str,
+        resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
+    ) -> Result<()> {
+        let records = get_all_files(cf_client, zone_identifier).await?;
+        for record in records {
+            FileRecord::delete(&record.name, cf_client, zone_identifier, resolver).await?;
         }
         Ok(())
     }

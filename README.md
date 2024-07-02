@@ -18,9 +18,9 @@ Functionality we want:
 - [x] Update an existing file (optional)
 - [x] Delete an existing file
 - [x] List all files in a domain
-- [ ] Delete all files in a domain (purge)
+- [x] Delete all files in a domain (purge)
 - [x] Compression (maybe [snap](https://crates.io/crates/snap)?)
-- [ ] Encryption (symmetric or maybe asymmetrics via [x25519-dalek](https://crates.io/crates/x25519-dalek)?)
+- [ ] Encryption (symmetric or maybe asymmetric via [x25519-dalek](https://crates.io/crates/x25519-dalek)?)
 
 We want to:
 1. Read an input file

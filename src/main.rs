@@ -1,7 +1,10 @@
 // This is extremely safe, it says so right here!
 #![forbid(unsafe_code)]
 
-use std::{io, path::Path};
+use std::{
+    io::{self, Write},
+    path::Path,
+};
 
 use clap::{Parser, Subcommand};
 use cloudflare::framework::{async_api, auth, Environment, HttpApiClientConfig};
@@ -11,7 +14,7 @@ use file::File;
 use file_record::FileRecord;
 use helpers::{check_usage_agreement, get_all_files};
 use securefmt::Debug;
-use tracing::debug;
+use tracing::{debug, warn};
 use trust_dns_resolver::{
     config::{ResolverConfig, ResolverOpts},
     TokioAsyncResolver,
@@ -44,6 +47,10 @@ enum Commands {
         fqdn: String,
     },
     List,
+    Purge {
+        #[arg(short, long, help = "Skip confirmation")]
+        force: bool,
+    },
 }
 
 #[tokio::main]
@@ -108,6 +115,28 @@ async fn main() -> Result<()> {
             let records = get_all_files(&cf_client, &config.cloudflare.zone_id).await?;
             for record in records {
                 println!("{name}", name = record.name);
+            }
+        }
+        Commands::Purge { force } => {
+            if *force {
+                warn!("Force has been passed, skipping confirmation");
+                FileRecord::purge(&cf_client, &config.cloudflare.zone_id, &resolver).await?;
+                warn!("All files successfully purged");
+            } else {
+                warn!("BE CAREFUL!");
+                warn!("This will purge all DNFS Files from the DNS zone");
+                print!("Are you sure you want to purge all data? This action cannot be undone. (y/N): ");
+                io::stdout().flush().unwrap();
+
+                let mut input = String::new();
+                io::stdin().read_line(&mut input).unwrap();
+
+                if input.trim().to_lowercase() == "y" {
+                    println!("By fire be purged");
+                    FileRecord::purge(&cf_client, &config.cloudflare.zone_id, &resolver).await?;
+                } else {
+                    warn!("Purge aborted");
+                }
             }
         }
     }
