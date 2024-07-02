@@ -9,7 +9,7 @@ use color_eyre::eyre::Result;
 use config::Config;
 use file::File;
 use file_record::FileRecord;
-use helpers::check_usage_agreement;
+use helpers::{check_usage_agreement, get_all_files};
 use securefmt::Debug;
 use tracing::debug;
 use trust_dns_resolver::{
@@ -43,6 +43,7 @@ enum Commands {
         #[arg(help = "The file FQDN to delete")]
         fqdn: String,
     },
+    List,
 }
 
 #[tokio::main]
@@ -102,6 +103,12 @@ async fn main() -> Result<()> {
         Commands::Delete { fqdn } => {
             FileRecord::delete(fqdn, &cf_client, &config.cloudflare.zone_id, &resolver).await?;
             println!("File successfully deleted - {fqdn}");
+        }
+        Commands::List => {
+            let records = get_all_files(&cf_client, &config.cloudflare.zone_id).await?;
+            for record in records {
+                println!("{name}", name = record.name);
+            }
         }
     }
 

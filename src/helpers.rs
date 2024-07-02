@@ -32,6 +32,7 @@ pub enum DNFSError {
     RecordNotFound(String),
 }
 
+// Helper function to the ID of a specific record
 pub async fn get_record_id(
     name: &str,
     cf_client: &async_api::Client,
@@ -51,6 +52,28 @@ pub async fn get_record_id(
         .iter()
         .find(|record| record.name.eq(name))
         .map(|record| record.id.clone())
+}
+
+// Helper function to get all records under the `dnfs` subdomain
+pub async fn get_all_files(
+    cf_client: &async_api::Client,
+    zone_identifier: &str,
+) -> Result<Vec<dns::DnsRecord>> {
+    let request = dns::ListDnsRecords {
+        zone_identifier,
+        params: dns::ListDnsRecordsParams {
+            ..Default::default()
+        },
+    };
+    debug!("Request: {request:?}");
+    let response = cf_client.request(&request).await?;
+    // Filter for records under the `dnfs` subdomain
+    let records = response
+        .result
+        .into_iter()
+        .filter(|record| record.name.contains(".dnfs") && !record.name.contains("chunk"))
+        .collect();
+    Ok(records)
 }
 
 // Helper function to Write a TXT record
