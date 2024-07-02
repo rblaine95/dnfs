@@ -32,7 +32,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     Upload {
-        #[arg(help = "The path to a file to upload")]
+        #[arg(help = "Path to the file to upload")]
         path: String,
     },
     Download {
