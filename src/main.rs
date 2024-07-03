@@ -48,23 +48,35 @@ struct GlobalArgs {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    Upload {
-        #[arg(help = "Path to the file to upload")]
-        path: String,
-    },
-    Download {
-        #[arg(help = "The file FQDN to download")]
-        fqdn: String,
-    },
+    Upload(UploadArgs),
+    Download(DownloadArgs),
     Delete {
         #[arg(help = "The file FQDN to delete")]
         fqdn: String,
     },
     List,
     Purge {
-        #[arg(short, long, help = "Skip confirmation")]
+        #[arg(long, help = "Skip confirmation")]
         force: bool,
     },
+}
+
+#[derive(Args, Debug)]
+struct UploadArgs {
+    #[arg(help = "Path to the file to upload")]
+    path: String,
+
+    #[arg(long, help = "Whether to encrypt the file")]
+    encrypt: bool,
+}
+
+#[derive(Args, Debug)]
+struct DownloadArgs {
+    #[arg(help = "The file FQDN to download")]
+    fqdn: String,
+
+    #[arg(long, help = "Whether to decrypt the file")]
+    decrypt: bool,
 }
 
 #[tokio::main]
@@ -109,22 +121,42 @@ async fn main() -> Result<()> {
     )?;
 
     match &cli.command {
-        Commands::Upload { path } => {
-            let magic_crypt = magic_crypt::new_magic_crypt!(&config.dnfs.encryption_key, 256);
-            let file = File::new(Path::new(path))?;
+        Commands::Upload(args) => {
+            let magic_crypt = if args.encrypt {
+                Some(magic_crypt::new_magic_crypt!(
+                    &config
+                        .dnfs
+                        .encryption_key
+                        .expect("Encrypt set to true, key is required"),
+                    256
+                ))
+            } else {
+                None
+            };
+            let file = File::new(Path::new(&args.path))?;
             let file_upload = file
                 .upload(
                     &cf_client,
                     &config.cloudflare.zone_id,
                     &config.dnfs.domain_name,
-                    &magic_crypt,
+                    magic_crypt.as_ref(),
                 )
                 .await?;
             println!("File successfully uploaded - {file_upload}");
         }
-        Commands::Download { fqdn } => {
-            let magic_crypt = magic_crypt::new_magic_crypt!(&config.dnfs.encryption_key, 256);
-            let file = File::read(fqdn, &resolver, &magic_crypt).await?;
+        Commands::Download(args) => {
+            let magic_crypt = if args.decrypt {
+                Some(magic_crypt::new_magic_crypt!(
+                    &config
+                        .dnfs
+                        .encryption_key
+                        .expect("Decrypt set to true, key is required"),
+                    256
+                ))
+            } else {
+                None
+            };
+            let file = File::read(&args.fqdn, &resolver, magic_crypt.as_ref()).await?;
             let file_data = file.read_to_string();
             println!("{file_data}");
         }
@@ -221,7 +253,7 @@ mod tests {
                 &cf_client,
                 &config.cloudflare.zone_id,
                 &config.dnfs.domain_name,
-                &magic_crypt::new_magic_crypt!("test", 256),
+                Some(&magic_crypt::new_magic_crypt!("test", 256)),
             )
             .await;
         assert!(result.is_ok());
@@ -239,7 +271,7 @@ mod tests {
         let file = File::read(
             file_fqdn,
             &resolver,
-            &magic_crypt::new_magic_crypt!("test", 256),
+            Some(&magic_crypt::new_magic_crypt!("test", 256)),
         )
         .await;
         assert!(file.is_ok());

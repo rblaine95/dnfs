@@ -27,7 +27,7 @@ pub struct Cloudflare {
 #[serde(rename_all = "camelCase")]
 pub struct Dnfs {
     pub domain_name: String,
-    pub encryption_key: String,
+    pub encryption_key: Option<String>,
 }
 
 impl Config {

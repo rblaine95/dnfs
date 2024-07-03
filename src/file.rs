@@ -3,6 +3,7 @@
 
 use std::path::Path;
 
+use base64::prelude::*;
 use cloudflare::framework::async_api;
 use color_eyre::{
     eyre::{OptionExt, WrapErr},
@@ -78,7 +79,7 @@ impl File {
         cf_client: &async_api::Client,
         zone_identifier: &str,
         domain_name: &str,
-        magic_crypt: &magic_crypt::MagicCrypt256,
+        magic_crypt: Option<&magic_crypt::MagicCrypt256>,
     ) -> Result<String> {
         // Create File Record
         let file_record = FileRecord::new(self);
@@ -105,7 +106,7 @@ impl File {
         zone_identifier: &str,
         domain_name: &str,
         file_record: &FileRecord,
-        magic_crypt: &magic_crypt::MagicCrypt256,
+        magic_crypt: Option<&magic_crypt::MagicCrypt256>,
     ) -> Result<Vec<String>> {
         stream::iter(&self.data)
             .map(|chunk| {
@@ -116,10 +117,14 @@ impl File {
                 );
                 let zone_identifier = zone_identifier.to_string();
 
-                let encrypted_data = magic_crypt.encrypt_bytes_to_base64(&chunk.data);
+                let data = if let Some(magic_crypt) = magic_crypt {
+                    magic_crypt.encrypt_bytes_to_base64(&chunk.data)
+                } else {
+                    BASE64_STANDARD.encode(&chunk.data)
+                };
 
                 async move {
-                    write_txt_record(&chunk_fqdn, &encrypted_data, cf_client, &zone_identifier)
+                    write_txt_record(&chunk_fqdn, &data, cf_client, &zone_identifier)
                         .await
                         .wrap_err_with(|| format!("Failed to create chunk: {chunk_fqdn}"))
                 }
@@ -136,7 +141,7 @@ impl File {
     pub async fn read(
         file_fqdn: &str,
         resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
-        magic_crypt: &magic_crypt::MagicCrypt256,
+        magic_crypt: Option<&magic_crypt::MagicCrypt256>,
     ) -> Result<File> {
         debug!("Reading file: {file_fqdn}");
 
@@ -184,7 +189,7 @@ impl File {
         file_fqdn: &str,
         file_record: &FileRecord,
         resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
-        magic_crypt: &magic_crypt::MagicCrypt256,
+        magic_crypt: Option<&magic_crypt::MagicCrypt256>,
     ) -> Result<Vec<Chunk>> {
         debug!("Getting chunks for file: {file_fqdn}");
 
@@ -212,7 +217,11 @@ impl File {
                 .collect();
             debug!("Chunk data: {chunk_data:?}");
 
-            let data = magic_crypt.decrypt_base64_to_bytes(&chunk_data)?;
+            let data = if let Some(magic_crypt) = magic_crypt {
+                magic_crypt.decrypt_base64_to_bytes(&chunk_data)?
+            } else {
+                BASE64_STANDARD.decode(&chunk_data)?
+            };
             debug!("Decoded data: {data:?}");
 
             chunks.push(Chunk { data, index: i });
