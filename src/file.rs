@@ -3,13 +3,13 @@
 
 use std::path::Path;
 
-use base64::prelude::*;
 use cloudflare::framework::async_api;
 use color_eyre::{
     eyre::{OptionExt, WrapErr},
     Result,
 };
 use futures::stream::{self, StreamExt};
+use magic_crypt::MagicCryptTrait;
 use securefmt::Debug;
 use tracing::debug;
 use trust_dns_resolver::{
@@ -78,6 +78,7 @@ impl File {
         cf_client: &async_api::Client,
         zone_identifier: &str,
         domain_name: &str,
+        magic_crypt: &magic_crypt::MagicCrypt256,
     ) -> Result<String> {
         // Create File Record
         let file_record = FileRecord::new(self);
@@ -86,7 +87,13 @@ impl File {
 
         // Create File Chunks
         let _file_chunks = self
-            .create_chunks(cf_client, zone_identifier, domain_name, &file_record)
+            .create_chunks(
+                cf_client,
+                zone_identifier,
+                domain_name,
+                &file_record,
+                magic_crypt,
+            )
             .await?;
 
         Ok(file_fqdn)
@@ -98,6 +105,7 @@ impl File {
         zone_identifier: &str,
         domain_name: &str,
         file_record: &FileRecord,
+        magic_crypt: &magic_crypt::MagicCrypt256,
     ) -> Result<Vec<String>> {
         stream::iter(&self.data)
             .map(|chunk| {
@@ -106,11 +114,12 @@ impl File {
                     index = chunk.index,
                     name = file_record.name,
                 );
-                let base64_data = BASE64_STANDARD.encode(&chunk.data);
                 let zone_identifier = zone_identifier.to_string();
 
+                let encrypted_data = magic_crypt.encrypt_bytes_to_base64(&chunk.data);
+
                 async move {
-                    write_txt_record(&chunk_fqdn, &base64_data, cf_client, &zone_identifier)
+                    write_txt_record(&chunk_fqdn, &encrypted_data, cf_client, &zone_identifier)
                         .await
                         .wrap_err_with(|| format!("Failed to create chunk: {chunk_fqdn}"))
                 }
@@ -127,11 +136,12 @@ impl File {
     pub async fn read(
         file_fqdn: &str,
         resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
+        magic_crypt: &magic_crypt::MagicCrypt256,
     ) -> Result<File> {
         debug!("Reading file: {file_fqdn}");
 
         let file_record = FileRecord::from_dns_record(file_fqdn, resolver).await?;
-        let file_chunks = File::get_chunks(file_fqdn, &file_record, resolver).await?;
+        let file_chunks = File::get_chunks(file_fqdn, &file_record, resolver, magic_crypt).await?;
 
         // Calculate and validate SHA256 hash
         let compressed_data = file_chunks.iter().fold(Vec::new(), |mut acc, chunk| {
@@ -174,6 +184,7 @@ impl File {
         file_fqdn: &str,
         file_record: &FileRecord,
         resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
+        magic_crypt: &magic_crypt::MagicCrypt256,
     ) -> Result<Vec<Chunk>> {
         debug!("Getting chunks for file: {file_fqdn}");
 
@@ -201,7 +212,7 @@ impl File {
                 .collect();
             debug!("Chunk data: {chunk_data:?}");
 
-            let data = BASE64_STANDARD.decode(chunk_data.as_bytes())?;
+            let data = magic_crypt.decrypt_base64_to_bytes(&chunk_data)?;
             debug!("Decoded data: {data:?}");
 
             chunks.push(Chunk { data, index: i });

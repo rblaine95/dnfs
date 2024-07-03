@@ -110,18 +110,21 @@ async fn main() -> Result<()> {
 
     match &cli.command {
         Commands::Upload { path } => {
+            let magic_crypt = magic_crypt::new_magic_crypt!(&config.dnfs.encryption_key, 256);
             let file = File::new(Path::new(path))?;
             let file_upload = file
                 .upload(
                     &cf_client,
                     &config.cloudflare.zone_id,
                     &config.dnfs.domain_name,
+                    &magic_crypt,
                 )
                 .await?;
             println!("File successfully uploaded - {file_upload}");
         }
         Commands::Download { fqdn } => {
-            let file = File::read(fqdn, &resolver).await?;
+            let magic_crypt = magic_crypt::new_magic_crypt!(&config.dnfs.encryption_key, 256);
+            let file = File::read(fqdn, &resolver, &magic_crypt).await?;
             let file_data = file.read_to_string();
             println!("{file_data}");
         }
@@ -218,6 +221,7 @@ mod tests {
                 &cf_client,
                 &config.cloudflare.zone_id,
                 &config.dnfs.domain_name,
+                &magic_crypt::new_magic_crypt!("test", 256),
             )
             .await;
         assert!(result.is_ok());
@@ -232,7 +236,12 @@ mod tests {
 
         let file_fqdn = "test.dnfs.bunkerlab.net";
 
-        let file = File::read(file_fqdn, &resolver).await;
+        let file = File::read(
+            file_fqdn,
+            &resolver,
+            &magic_crypt::new_magic_crypt!("test", 256),
+        )
+        .await;
         assert!(file.is_ok());
 
         let file_data = file

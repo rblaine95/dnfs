@@ -1,5 +1,6 @@
 [dnfs]
 domainName = "bunkerlab.net"
+encryptionKey = "bunkerlab"
 
 [cloudflare]
 apiKey = "changeme"

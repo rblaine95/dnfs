@@ -14,9 +14,12 @@ use trust_dns_resolver::{
 
 const USAGE_AGREEMENT: &str = "I understand that DNFS is a terrible idea and I promise I will never use it for anything important ever";
 // Max TXT Content per record is 2048 characters
-// Base64 encoding by ±33% (for every 3 bytes of input, you get 4 bytes out)
-const MAX_TXT_CONTENT_SIZE: usize = 2048;
-pub const MAX_CHUNK_SIZE: usize = (MAX_TXT_CONTENT_SIZE * 3) / 4;
+// Base64 encoding adds ±33% (for every 3 bytes of input, you get 4 bytes out)
+// const MAX_TXT_CONTENT_SIZE: usize = 2048;
+// pub const MAX_CHUNK_SIZE: usize = (MAX_TXT_CONTENT_SIZE * 3) / 4;
+// BUT because we're encrypting now as well
+// 1536 in = 2078 out which is just a little too big
+pub const MAX_CHUNK_SIZE: usize = 1500;
 
 #[derive(Error, Debug)]
 pub enum DNFSError {

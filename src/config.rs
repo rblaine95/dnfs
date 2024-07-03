@@ -17,7 +17,6 @@ pub struct Config {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(clippy::module_name_repetitions)]
 pub struct Cloudflare {
     #[sensitive]
     pub api_key: String,
@@ -26,9 +25,9 @@ pub struct Cloudflare {
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(clippy::module_name_repetitions)]
 pub struct Dnfs {
     pub domain_name: String,
+    pub encryption_key: String,
 }
 
 impl Config {
