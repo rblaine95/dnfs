@@ -6,7 +6,7 @@ use std::{
     path::Path,
 };
 
-use clap::{Parser, Subcommand};
+use clap::{arg, Args, Parser, Subcommand};
 use cloudflare::framework::{async_api, auth, Environment, HttpApiClientConfig};
 use color_eyre::eyre::Result;
 use config::Config;
@@ -28,8 +28,22 @@ mod helpers;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    #[command(flatten)]
+    global: GlobalArgs,
+
     #[command(subcommand)]
     command: Commands,
+}
+
+#[derive(Args, Debug)]
+struct GlobalArgs {
+    #[arg(
+        long,
+        global = true,
+        help = "Number of concurrent jobs",
+        default_value = "4"
+    )]
+    jobs: usize,
 }
 
 #[derive(Subcommand, Debug)]
@@ -57,6 +71,8 @@ enum Commands {
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
+    let cli = Cli::parse();
+
     // Default log level is `info`
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var(
@@ -68,6 +84,9 @@ async fn main() -> Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .with_writer(io::stderr)
         .init();
+
+    // Default number of jobs for streams is 4
+    std::env::set_var("JOBS", cli.global.jobs.to_string());
 
     // Load config
     let config = Config::new(Path::new("config.toml"))?;
@@ -89,7 +108,6 @@ async fn main() -> Result<()> {
         Environment::Production,
     )?;
 
-    let cli = Cli::parse();
     match &cli.command {
         Commands::Upload { path } => {
             let file = File::new(Path::new(path))?;

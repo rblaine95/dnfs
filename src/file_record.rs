@@ -2,7 +2,8 @@
 #![forbid(unsafe_code)]
 
 use cloudflare::{endpoints::dns, framework::async_api};
-use color_eyre::eyre::Result;
+use color_eyre::{eyre::WrapErr, Result};
+use futures::stream::{self, StreamExt};
 use securefmt::Debug;
 use tracing::{debug, info};
 use trust_dns_resolver::{
@@ -121,23 +122,36 @@ impl FileRecord {
         info!("Deleting file: {file_fqdn}");
         let identifier = get_record_id(file_fqdn, cf_client, zone_identifier).await;
 
+        let file_record = FileRecord::from_dns_record(file_fqdn, resolver).await?;
+
         if let Some(id) = identifier {
-            let file_record = FileRecord::from_dns_record(file_fqdn, resolver).await?;
             let chunk_fqdns = (0..file_record.chunks)
                 .map(|i| format!("chunk{i}.{file_fqdn}",))
                 .collect::<Vec<String>>();
-            for chunk_fqdn in chunk_fqdns {
-                info!("Deleting chunk: {chunk_fqdn}");
-                let chunk_id = get_record_id(chunk_fqdn.as_str(), cf_client, zone_identifier).await;
-                if let Some(id) = chunk_id {
-                    cf_client
-                        .request(&dns::DeleteDnsRecord {
-                            zone_identifier,
-                            identifier: id.as_str(),
-                        })
-                        .await?;
-                }
-            }
+
+            // Use stream to process chunks in parallel
+            stream::iter(chunk_fqdns)
+                .map(|chunk_fqdn| async move {
+                    info!("Deleting chunk: {chunk_fqdn}");
+                    if let Some(chunk_id) =
+                        get_record_id(&chunk_fqdn, cf_client, zone_identifier).await
+                    {
+                        cf_client
+                            .request(&dns::DeleteDnsRecord {
+                                zone_identifier,
+                                identifier: chunk_id.as_str(),
+                            })
+                            .await
+                            .wrap_err_with(|| format!("Failed to delete chunk {chunk_fqdn}"))?;
+                    }
+                    Ok(())
+                })
+                .buffer_unordered(std::env::var("JOBS")?.parse()?)
+                .collect::<Vec<Result<()>>>()
+                .await
+                .into_iter()
+                .collect::<Result<Vec<_>>>()?;
+
             cf_client
                 .request(&dns::DeleteDnsRecord {
                     zone_identifier,

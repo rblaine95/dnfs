@@ -5,7 +5,11 @@ use std::path::Path;
 
 use base64::prelude::*;
 use cloudflare::framework::async_api;
-use color_eyre::eyre::{OptionExt, Result};
+use color_eyre::{
+    eyre::{OptionExt, WrapErr},
+    Result,
+};
+use futures::stream::{self, StreamExt};
 use securefmt::Debug;
 use tracing::debug;
 use trust_dns_resolver::{
@@ -95,23 +99,27 @@ impl File {
         domain_name: &str,
         file_record: &FileRecord,
     ) -> Result<Vec<String>> {
-        let mut chunk_vec = Vec::new();
+        stream::iter(&self.data)
+            .map(|chunk| {
+                let chunk_fqdn = format!(
+                    "chunk{index}.{name}.dnfs.{domain_name}",
+                    index = chunk.index,
+                    name = file_record.name,
+                );
+                let base64_data = BASE64_STANDARD.encode(&chunk.data);
+                let zone_identifier = zone_identifier.to_string();
 
-        for chunk in &self.data {
-            let chunk_fqdn = format!(
-                "chunk{index}.{name}.dnfs.{domain_name}",
-                index = chunk.index,
-                name = file_record.name,
-            );
-
-            let base64_data = BASE64_STANDARD.encode(&chunk.data);
-
-            chunk_vec.push(
-                write_txt_record(&chunk_fqdn, &base64_data, cf_client, zone_identifier).await?,
-            );
-        }
-
-        Ok(chunk_vec)
+                async move {
+                    write_txt_record(&chunk_fqdn, &base64_data, cf_client, &zone_identifier)
+                        .await
+                        .wrap_err_with(|| format!("Failed to create chunk: {chunk_fqdn}"))
+                }
+            })
+            .buffer_unordered(std::env::var("JOBS")?.parse()?)
+            .collect::<Vec<Result<String>>>()
+            .await
+            .into_iter()
+            .collect()
     }
 
     // Given `file_name.dnfs.domain_name TXT "v=dnfs1 chunks=1 size=12 sha256hash=d2a84f4b8b650937ec8f73cd8be2c74add5a911ba64df27458ed8229da804a26 mime=text/plain extension=txt"`
@@ -179,7 +187,6 @@ impl File {
         for i in 0..file_record.chunks {
             let chunk_fqdn = format!(
                 "chunk{i}.{name}.dnfs.{domain_name}",
-                i = i,
                 name = file_record.name,
             );
             debug!("Reading chunk {chunk_fqdn}");

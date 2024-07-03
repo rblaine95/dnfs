@@ -20,6 +20,7 @@ Functionality we want:
 - [x] List all files in a domain
 - [x] Delete all files in a domain (purge)
 - [x] Compression (maybe [snap](https://crates.io/crates/snap)?)
+- [x] Parallel Uploads and Deletes
 - [ ] Encryption (symmetric or maybe asymmetric via [x25519-dalek](https://crates.io/crates/x25519-dalek)?)
 
 We want to:
