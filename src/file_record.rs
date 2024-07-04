@@ -100,6 +100,7 @@ impl FileRecord {
         cf_client: &async_api::Client,
         zone_identifier: &str,
         domain_name: &str,
+        dry_run: bool,
     ) -> Result<String> {
         let fqdn = format!("{name}.dnfs.{domain_name}", name = self.name);
         let content = format!(
@@ -110,7 +111,7 @@ impl FileRecord {
                 sha256 = self.sha256,
                 mime = self.mime,
                 extension = self.extension.clone().unwrap_or_default());
-        write_txt_record(&fqdn, &content, cf_client, zone_identifier).await
+        write_txt_record(&fqdn, &content, cf_client, zone_identifier, dry_run).await
     }
 
     pub async fn delete(
@@ -118,6 +119,7 @@ impl FileRecord {
         cf_client: &async_api::Client,
         zone_identifier: &str,
         resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
+        dry_run: bool,
     ) -> Result<()> {
         info!("Deleting file: {file_fqdn}");
         let identifier = get_record_id(file_fqdn, cf_client, zone_identifier).await;
@@ -136,6 +138,10 @@ impl FileRecord {
                     if let Some(chunk_id) =
                         get_record_id(&chunk_fqdn, cf_client, zone_identifier).await
                     {
+                        if dry_run {
+                            info!("Dry run enabled, not deleting chunk");
+                            return Ok(());
+                        }
                         cf_client
                             .request(&dns::DeleteDnsRecord {
                                 zone_identifier,
@@ -152,6 +158,10 @@ impl FileRecord {
                 .into_iter()
                 .collect::<Result<Vec<_>>>()?;
 
+            if dry_run {
+                info!("Dry run enabled, not deleting file");
+                return Ok(());
+            }
             cf_client
                 .request(&dns::DeleteDnsRecord {
                     zone_identifier,
@@ -168,10 +178,11 @@ impl FileRecord {
         cf_client: &async_api::Client,
         zone_identifier: &str,
         resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
+        dry_run: bool,
     ) -> Result<()> {
         let records = get_all_files(cf_client, zone_identifier).await?;
         for record in records {
-            FileRecord::delete(&record.name, cf_client, zone_identifier, resolver).await?;
+            FileRecord::delete(&record.name, cf_client, zone_identifier, resolver, dry_run).await?;
         }
         Ok(())
     }

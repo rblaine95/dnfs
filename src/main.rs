@@ -44,6 +44,9 @@ struct GlobalArgs {
         default_value = "4"
     )]
     jobs: usize,
+
+    #[arg(long, help = "Dry run mode, do not actually perform any actions")]
+    dry_run: bool,
 }
 
 #[derive(Subcommand, Debug)]
@@ -80,6 +83,7 @@ struct DownloadArgs {
 }
 
 #[tokio::main]
+#[allow(clippy::too_many_lines)]
 async fn main() -> Result<()> {
     color_eyre::install()?;
 
@@ -87,10 +91,7 @@ async fn main() -> Result<()> {
 
     // Default log level is `info`
     if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var(
-            "RUST_LOG",
-            std::env::var("LOG_LEVEL").unwrap_or("info".to_string()),
-        );
+        std::env::set_var("RUST_LOG", "info");
     }
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -140,6 +141,7 @@ async fn main() -> Result<()> {
                     &config.cloudflare.zone_id,
                     &config.dnfs.domain_name,
                     magic_crypt.as_ref(),
+                    cli.global.dry_run,
                 )
                 .await?;
             println!("File successfully uploaded - {file_upload}");
@@ -161,7 +163,14 @@ async fn main() -> Result<()> {
             println!("{file_data}");
         }
         Commands::Delete { fqdn } => {
-            FileRecord::delete(fqdn, &cf_client, &config.cloudflare.zone_id, &resolver).await?;
+            FileRecord::delete(
+                fqdn,
+                &cf_client,
+                &config.cloudflare.zone_id,
+                &resolver,
+                cli.global.dry_run,
+            )
+            .await?;
             println!("File successfully deleted - {fqdn}");
         }
         Commands::List => {
@@ -173,7 +182,13 @@ async fn main() -> Result<()> {
         Commands::Purge { force } => {
             if *force {
                 warn!("Force has been passed, skipping confirmation");
-                FileRecord::purge(&cf_client, &config.cloudflare.zone_id, &resolver).await?;
+                FileRecord::purge(
+                    &cf_client,
+                    &config.cloudflare.zone_id,
+                    &resolver,
+                    cli.global.dry_run,
+                )
+                .await?;
                 warn!("All files successfully purged");
             } else {
                 warn!("BE CAREFUL!");
@@ -186,7 +201,13 @@ async fn main() -> Result<()> {
 
                 if input.trim().to_lowercase() == "y" {
                     println!("By fire be purged");
-                    FileRecord::purge(&cf_client, &config.cloudflare.zone_id, &resolver).await?;
+                    FileRecord::purge(
+                        &cf_client,
+                        &config.cloudflare.zone_id,
+                        &resolver,
+                        cli.global.dry_run,
+                    )
+                    .await?;
                 } else {
                     warn!("Purge aborted");
                 }
@@ -254,6 +275,7 @@ mod tests {
                 &config.cloudflare.zone_id,
                 &config.dnfs.domain_name,
                 Some(&magic_crypt::new_magic_crypt!("test", 256)),
+                false,
             )
             .await;
         assert!(result.is_ok());

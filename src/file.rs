@@ -80,11 +80,18 @@ impl File {
         zone_identifier: &str,
         domain_name: &str,
         magic_crypt: Option<&magic_crypt::MagicCrypt256>,
+        dry_run: bool,
     ) -> Result<String> {
         // Create File Record
         let file_record = FileRecord::new(self);
-        let file_fqdn =
-            FileRecord::create(&file_record, cf_client, zone_identifier, domain_name).await?;
+        let file_fqdn = FileRecord::create(
+            &file_record,
+            cf_client,
+            zone_identifier,
+            domain_name,
+            dry_run,
+        )
+        .await?;
 
         // Create File Chunks
         let _file_chunks = self
@@ -94,6 +101,7 @@ impl File {
                 domain_name,
                 &file_record,
                 magic_crypt,
+                dry_run,
             )
             .await?;
 
@@ -107,6 +115,7 @@ impl File {
         domain_name: &str,
         file_record: &FileRecord,
         magic_crypt: Option<&magic_crypt::MagicCrypt256>,
+        dry_run: bool,
     ) -> Result<Vec<String>> {
         stream::iter(&self.data)
             .map(|chunk| {
@@ -124,7 +133,7 @@ impl File {
                 };
 
                 async move {
-                    write_txt_record(&chunk_fqdn, &data, cf_client, &zone_identifier)
+                    write_txt_record(&chunk_fqdn, &data, cf_client, &zone_identifier, dry_run)
                         .await
                         .wrap_err_with(|| format!("Failed to create chunk: {chunk_fqdn}"))
                 }

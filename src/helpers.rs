@@ -88,6 +88,7 @@ pub async fn write_txt_record(
     content: &str,
     cf_client: &async_api::Client,
     zone_identifier: &str,
+    dry_run: bool,
 ) -> Result<String> {
     info!("Writing TXT record: {name:?}");
     // Check if the record already exists
@@ -108,8 +109,13 @@ pub async fn write_txt_record(
             },
         };
         debug!("Request: {request:?}");
-        let response = cf_client.request(&request).await?;
-        Ok(response.result.name)
+        if dry_run {
+            info!("Dry run enabled, not updating record");
+            Ok(name.to_string())
+        } else {
+            let response = cf_client.request(&request).await?;
+            Ok(response.result.name)
+        }
     } else {
         let request = dns::CreateDnsRecord {
             zone_identifier,
@@ -124,8 +130,13 @@ pub async fn write_txt_record(
             },
         };
         debug!("Request: {request:?}");
-        let response = cf_client.request(&request).await?;
-        Ok(response.result.name)
+        if dry_run {
+            info!("Dry run enabled, not creating record");
+            Ok(name.to_string())
+        } else {
+            let response = cf_client.request(&request).await?;
+            Ok(response.result.name)
+        }
     }
 }
 
