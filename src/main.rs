@@ -159,8 +159,7 @@ async fn main() -> Result<()> {
                 None
             };
             let file = File::read(&args.fqdn, &resolver, magic_crypt.as_ref()).await?;
-            let file_data = file.read_to_string();
-            println!("{file_data}");
+            file.read_to_stdout()?;
         }
         Commands::Delete { fqdn } => {
             FileRecord::delete(

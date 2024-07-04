@@ -1,7 +1,10 @@
 // This is extremely safe, it says so right here!
 #![forbid(unsafe_code)]
 
-use std::path::Path;
+use std::{
+    io::{self, Write},
+    path::Path,
+};
 
 use base64::prelude::*;
 use cloudflare::framework::async_api;
@@ -183,15 +186,28 @@ impl File {
         Ok(file)
     }
 
-    pub fn read_to_string(&self) -> String {
+    pub fn read_to_stdout(&self) -> Result<()> {
         let compressed = self.data.iter().fold(Vec::new(), |mut acc, chunk| {
             acc.extend_from_slice(&chunk.data);
             acc
         });
         let uncompressed = snap::raw::Decoder::new()
             .decompress_vec(&compressed)
-            .unwrap();
-        String::from_utf8_lossy(&uncompressed).to_string()
+            .unwrap_or_else(|_| Vec::new());
+        io::stdout().write_all(&uncompressed)?;
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn read_to_string(&self) -> Result<String> {
+        let compressed = self.data.iter().fold(Vec::new(), |mut acc, chunk| {
+            acc.extend_from_slice(&chunk.data);
+            acc
+        });
+        let uncompressed = snap::raw::Decoder::new()
+            .decompress_vec(&compressed)
+            .unwrap_or_else(|_| Vec::new());
+        Ok(String::from_utf8(uncompressed)?)
     }
 
     async fn get_chunks(
