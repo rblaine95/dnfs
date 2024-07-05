@@ -14,7 +14,7 @@ Functionality we have:
 - [x] Delete all files in a domain (purge)
 - [x] Compression ([snap](https://crates.io/crates/snap))
 - [x] Parallel Uploads and Deletes
-- [x] Encryption ([magic-crypt](https://crates.io/crates/magic-crypt))
+- [x] Encryption (AES-256 via [magic-crypt](https://crates.io/crates/magic-crypt))
 
 Example - uploading and reading [RFC1035](https://datatracker.ietf.org/doc/html/rfc1035)
 ```sh
