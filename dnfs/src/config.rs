@@ -7,7 +7,7 @@ use color_eyre::eyre::Result;
 use securefmt::Debug;
 use serde_derive::{Deserialize, Serialize};
 
-use crate::helpers::DNFSError;
+use dnfs_lib::helpers::DNFSError;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Config {

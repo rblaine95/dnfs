@@ -10,9 +10,11 @@ use clap::{arg, Args, Parser, Subcommand};
 use cloudflare::framework::{async_api, auth, Environment, HttpApiClientConfig};
 use color_eyre::eyre::Result;
 use config::Config;
-use file::File;
-use file_record::FileRecord;
-use helpers::{check_usage_agreement, get_all_files};
+use dnfs_lib::{
+    file::File,
+    file_record::FileRecord,
+    helpers::{check_usage_agreement, get_all_files},
+};
 use securefmt::Debug;
 use tracing::{debug, warn};
 use trust_dns_resolver::{
@@ -21,9 +23,6 @@ use trust_dns_resolver::{
 };
 
 mod config;
-mod file;
-mod file_record;
-mod helpers;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

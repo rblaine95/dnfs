@@ -44,6 +44,11 @@ pub struct Chunk {
 }
 
 impl File {
+    /// Create a new File from a Path
+    /// This will read the file, compress it, and split it into chunks
+    ///
+    /// # Errors
+    /// This function will return an error if the file name is invalid, the file cannot be read, or the file cannot be compressed.
     pub fn new(path: &Path) -> Result<Self> {
         let name = path
             .file_name()
@@ -77,6 +82,11 @@ impl File {
         })
     }
 
+    /// Upload the file to the cloud
+    /// This will create a `FileRecord` and `FileChunks`
+    ///
+    /// # Errors
+    /// This function will return an error if the file cannot be uploaded
     pub async fn upload(
         &self,
         cf_client: &async_api::Client,
@@ -148,8 +158,11 @@ impl File {
             .collect()
     }
 
-    // Given `file_name.dnfs.domain_name TXT "v=dnfs1 chunks=1 size=12 sha256hash=d2a84f4b8b650937ec8f73cd8be2c74add5a911ba64df27458ed8229da804a26 mime=text/plain extension=txt"`
-    // Reconstruct the file from its chunks and verify the sha256 hash
+    /// Given `file_name.dnfs.domain_name TXT "v=dnfs1 chunks=1 size=12 sha256hash=d2a84f4b8b650937ec8f73cd8be2c74add5a911ba64df27458ed8229da804a26 mime=text/plain extension=txt"`
+    /// Reconstruct the file from its chunks and verify the sha256 hash
+    ///
+    /// # Errors
+    /// This function will return an error if the file cannot be read, the file cannot be decompressed, or the sha256 hash is invalid
     pub async fn read(
         file_fqdn: &str,
         resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
@@ -186,6 +199,10 @@ impl File {
         Ok(file)
     }
 
+    /// Get the chunks of a file from DNS, uncompress, and output to STDOUT
+    ///
+    /// # Errors
+    /// This function will return an error if the file cannot be read, the file cannot be decompressed, or the sha256 hash is invalid
     pub fn read_to_stdout(&self) -> Result<()> {
         let compressed = self.data.iter().fold(Vec::new(), |mut acc, chunk| {
             acc.extend_from_slice(&chunk.data);
@@ -198,6 +215,10 @@ impl File {
         Ok(())
     }
 
+    /// Get the chunks of a file from DNS, uncompress, and output to a `String`
+    ///
+    /// # Errors
+    /// This function will return an error if the file cannot be read, the file cannot be decompressed, the sha256 hash is invalid, or the output is not valid UTF-8
     #[allow(dead_code)]
     pub fn read_to_string(&self) -> Result<String> {
         let compressed = self.data.iter().fold(Vec::new(), |mut acc, chunk| {

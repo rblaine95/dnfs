@@ -495,8 +495,29 @@ dependencies = [
 name = "dnfs"
 version = "0.1.0"
 dependencies = [
- "base64 0.22.1",
  "clap",
+ "cloudflare",
+ "color-eyre",
+ "dnfs-lib",
+ "futures",
+ "magic-crypt",
+ "rusty-hook",
+ "securefmt",
+ "serde",
+ "serde_derive",
+ "serde_json",
+ "tokio",
+ "toml 0.8.14",
+ "tracing",
+ "tracing-subscriber",
+ "trust-dns-resolver",
+]
+
+[[package]]
+name = "dnfs-lib"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
  "cloudflare",
  "color-eyre",
  "futures",
@@ -504,14 +525,9 @@ dependencies = [
  "mime_guess",
  "rusty-hook",
  "securefmt",
- "serde",
- "serde_derive",
- "serde_json",
  "sha256",
  "snap",
  "thiserror",
- "tokio",
- "toml 0.8.14",
  "tracing",
  "tracing-subscriber",
  "trust-dns-resolver",

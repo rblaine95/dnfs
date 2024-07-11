@@ -57,8 +57,11 @@ pub async fn get_record_id(
         .map(|record| record.id.clone())
 }
 
-// Helper function to get all records under the `dnfs` subdomain
-// Returns a `Vec` of all records of File FQDNs
+/// Helper function to get all records under the `dnfs` subdomain
+/// Returns a `Vec` of all records of File FQDNs
+///
+/// # Errors
+/// Returns an error if the request fails
 pub async fn get_all_files(
     cf_client: &async_api::Client,
     zone_identifier: &str,
@@ -80,9 +83,12 @@ pub async fn get_all_files(
     Ok(records)
 }
 
-// Helper function to Write a TXT record
-// Checks if record already exists
-// If it does, update the record
+/// Helper function to Write a TXT record
+/// Checks if record already exists
+/// If it does, update the record
+///
+/// # Errors
+/// Returns an error if the request fails
 pub async fn write_txt_record(
     name: &str,
     content: &str,
@@ -140,6 +146,10 @@ pub async fn write_txt_record(
     }
 }
 
+/// Helper function to check the DNFS usage agreement
+///
+/// # Errors
+/// Returns an error if the TXT record is not found or if the content doesn't match
 pub async fn check_usage_agreement(
     domain_name: &str,
     resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,

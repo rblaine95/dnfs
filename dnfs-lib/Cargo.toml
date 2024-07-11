@@ -1,0 +1,22 @@
+[package]
+name = "dnfs-lib"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+base64.workspace = true
+cloudflare.workspace = true
+color-eyre.workspace = true
+futures.workspace = true
+magic-crypt.workspace = true
+mime_guess.workspace = true
+securefmt.workspace = true
+sha256.workspace = true
+snap.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+trust-dns-resolver.workspace = true
+
+[dev-dependencies]
+rusty-hook.workspace = true

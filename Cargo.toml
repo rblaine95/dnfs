@@ -1,9 +1,8 @@
-[package]
-name = "dnfs"
-version = "0.1.0"
-edition = "2021"
+[workspace]
+members = ["dnfs", "dnfs-lib"]
+resolver = "2"
 
-[dependencies]
+[workspace.dependencies]
 base64 = "0.22.1"
 clap = { version = "4.5", features = ["derive"] }
 cloudflare = { version = "0.11", features = ["rustls-tls"] }
@@ -24,5 +23,5 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 trust-dns-resolver = { version = "0.23", features = ["dns-over-rustls"] }
 
-[dev-dependencies]
+# Dev Dependencies
 rusty-hook = "0.11"

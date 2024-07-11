@@ -29,6 +29,11 @@ pub struct FileRecord {
 }
 
 impl FileRecord {
+    /// Create a new `FileRecord` from a `File`
+    ///
+    /// # Panics
+    /// This function will panic if the file name is invalid
+    #[must_use]
     pub fn new(file: &File) -> Self {
         Self {
             chunks: file.data.len(),
@@ -76,6 +81,13 @@ impl FileRecord {
         }
     }
 
+    /// Create a new `FileRecord` from a DNS record
+    ///
+    /// # Errors
+    /// This function will return an error if the DNS record cannot be found or parsed
+    ///
+    /// # Panics
+    /// This function will panic if the file name is invalid
     pub async fn from_dns_record(
         file_fqdn: &str, // `file_name.dnfs.domain_name`
         resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
@@ -95,6 +107,10 @@ impl FileRecord {
         ))
     }
 
+    /// Create a DNS record for the `FileRecord`
+    ///
+    /// # Errors
+    /// This function will return an error if the DNS record cannot be found or parsed
     pub async fn create(
         &self,
         cf_client: &async_api::Client,
@@ -114,6 +130,10 @@ impl FileRecord {
         write_txt_record(&fqdn, &content, cf_client, zone_identifier, dry_run).await
     }
 
+    /// Delete a DNS File Record and all chunks
+    ///
+    /// # Errors
+    /// This function will return an error if the DNS record cannot be found or parsed
     pub async fn delete(
         file_fqdn: &str,
         cf_client: &async_api::Client,
@@ -174,6 +194,10 @@ impl FileRecord {
         Ok(())
     }
 
+    /// Purge all files in DNFS
+    ///
+    /// # Errors
+    /// This function will return an error if the DNS record cannot be found or parsed
     pub async fn purge(
         cf_client: &async_api::Client,
         zone_identifier: &str,
