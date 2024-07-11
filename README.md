@@ -62,3 +62,13 @@ Records will be structured as such:
 * `chunk0.file.dnfs.example.com` - `<"<first 255 characters>" "<next 255 characters>" ... "<last characters of chunk>">`
 * `chunk1.file.dnfs.example.com` - `<"<first 255 characters>" "<next 255 characters>" ... "<last characters of chunk>">`
 * `chunkn.file.dnfs.example.com` - `<"<first 255 characters>" "<next 255 characters>" ... "<last characters of chunk>">`
+
+## Hack-job Disclaimer
+To say this codebase is a hack-job is putting it lightly.
+
+I wrote this, pretty much, as a joke and paid little to no attention to best practices, security, or even good code.
+
+If you are reading this, please do not use this code in production.
+In fact, please just don't use this code at all.
+
+Please judge me lightly for the sins I have committed.
