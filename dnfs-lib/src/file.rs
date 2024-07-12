@@ -13,6 +13,7 @@ use color_eyre::{
     Result,
 };
 use futures::stream::{self, StreamExt};
+use heck::ToKebabCase;
 use magic_crypt::MagicCryptTrait;
 use securefmt::Debug;
 use tracing::debug;
@@ -50,11 +51,14 @@ impl File {
     /// # Errors
     /// This function will return an error if the file name is invalid, the file cannot be read, or the file cannot be compressed.
     pub fn new(path: &Path) -> Result<Self> {
-        let name = path
+        let file_name = path
             .file_name()
             .ok_or_eyre("Invalid file name")?
-            .to_string_lossy()
-            .into_owned();
+            .to_string_lossy();
+        let name = file_name.rsplit_once('.').map_or_else(
+            || file_name.to_kebab_case(),
+            |(name, ext)| format!("{}.{}", name.to_kebab_case(), ext),
+        );
         let data = std::fs::read(path)?;
         let compressed_data = snap::raw::Encoder::new().compress_vec(&data)?;
         let extension = path

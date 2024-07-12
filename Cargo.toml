@@ -8,6 +8,7 @@ clap = { version = "4.5", features = ["derive"] }
 cloudflare = { version = "0.11", features = ["rustls-tls"] }
 color-eyre = "0.6"
 futures = "0.3"
+heck = "0.5"
 magic-crypt = "3.1"
 mime_guess = "2.0"
 securefmt = "0.1"
