@@ -72,3 +72,15 @@ If you are reading this, please do not use this code in production.
 In fact, please just don't use this code at all.
 
 Please judge me lightly for the sins I have committed.
+
+### How to use:
+1. Add the following DNS record to your domain:
+```
+_dnfs-agreement    TXT    "I understand that DNFS is a terrible idea and I promise I will never use it for anything important ever"
+```
+2. Update `config.toml` with the relevant config:
+    * DNFS Domain Name
+    * Encryption Key (Optional)
+    * Cloudflare API Key
+    * Cloudflare Zone ID
+3. `cargo run`
