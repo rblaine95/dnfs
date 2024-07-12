@@ -1,0 +1,58 @@
+name: cargo
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+
+    permissions:
+      checks: write
+      contents: read
+
+    concurrency:
+      group: lint-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: clippy, rustfmt
+      - uses: wearerequired/lint-action@master
+        with:
+          check_name: "Lint (${linter})"
+          continue_on_error: false
+          rustfmt: true
+          rustfmt_auto_fix: false
+          clippy: true
+          clippy_args: -- -Dwarnings -Wclippy::pedantic
+          clippy_auto_fix: false
+
+  audit:
+    name: Audit
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      issues: write
+
+    concurrency:
+      group: audit-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/audit@v1
