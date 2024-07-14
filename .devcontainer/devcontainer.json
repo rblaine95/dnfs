@@ -11,6 +11,9 @@
 		},
 		"ghcr.io/lee-orr/rusty-dev-containers/cargo-binstall:0": {
 			"packages": "mise"
+		},
+		"ghcr.io/rocker-org/devcontainer-features/apt-packages:1": {
+			"packages": "curl,vim,htop,tmux,pkg-config"
 		}
 	},
 	"customizations": {
@@ -32,6 +35,8 @@
 
 	// Configure tool-specific properties.
 	// "customizations": {},
+
+	"postCreateCommand": "mise settings set experimental true",
 
 	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
 	"remoteUser": "root"
