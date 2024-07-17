@@ -11,6 +11,10 @@ on:
   schedule:
     - cron: "0 0 * * *"
 
+env:
+  SCCACHE_GHA_ENABLED: true
+  RUSTC_WRAPPER: sccache
+
 jobs:
   lint:
     name: Lint
@@ -31,6 +35,7 @@ jobs:
         with:
           toolchain: stable
           components: clippy, rustfmt
+      - uses: mozilla-actions/sccache-action@v0.0.5
       - uses: wearerequired/lint-action@master
         with:
           check_name: "Lint (${linter})"
@@ -55,4 +60,5 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - uses: mozilla-actions/sccache-action@v0.0.5
       - uses: actions-rust-lang/audit@v1
