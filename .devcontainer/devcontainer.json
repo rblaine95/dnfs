@@ -19,10 +19,10 @@
 	"customizations": {
 		"vscode": {
 			"extensions": [
-				"usernamehw.errorlens",
+				"fill-labs.dependi",
 				"rust-lang.rust-analyzer",
 				"tamasfe.even-better-toml",
-				"serayuzgur.crates"
+				"usernamehw.errorlens"
 			]
 		}
 	},

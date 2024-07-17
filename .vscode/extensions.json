@@ -1,7 +1,8 @@
 {
     "recommendations": [
-        "usernamehw.errorlens",
+        "fill-labs.dependi",
         "rust-lang.rust-analyzer",
-        "tamasfe.even-better-toml"
+        "tamasfe.even-better-toml",
+        "usernamehw.errorlens"
     ]
 }
