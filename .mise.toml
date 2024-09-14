@@ -1,3 +1,6 @@
+[settings]
+experimental = true
+
 [tasks.lint]
 description = "Lint project"
 run = "cargo clippy --all-targets --all-features -- -D warnings -Wclippy::pedantic"
