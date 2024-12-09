@@ -15,12 +15,12 @@ use dnfs_lib::{
     file_record::FileRecord,
     helpers::{check_usage_agreement, get_all_files},
 };
-use securefmt::Debug;
-use tracing::{debug, warn};
-use trust_dns_resolver::{
+use hickory_resolver::{
     config::{ResolverConfig, ResolverOpts},
     TokioAsyncResolver,
 };
+use securefmt::Debug;
+use tracing::{debug, warn};
 
 mod config;
 
@@ -220,7 +220,7 @@ async fn main() -> Result<()> {
 mod tests {
     use std::path::Path;
 
-    use trust_dns_resolver::{config, TokioAsyncResolver};
+    use hickory_resolver::{config, TokioAsyncResolver};
 
     use crate::File;
 
@@ -281,9 +281,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_from_dns_record() {
-        let resolver = trust_dns_resolver::TokioAsyncResolver::tokio(
-            trust_dns_resolver::config::ResolverConfig::cloudflare_tls(),
-            trust_dns_resolver::config::ResolverOpts::default(),
+        let resolver = hickory_resolver::TokioAsyncResolver::tokio(
+            hickory_resolver::config::ResolverConfig::cloudflare_tls(),
+            hickory_resolver::config::ResolverOpts::default(),
         );
 
         let file_fqdn = "test.dnfs.bunkerlab.net";

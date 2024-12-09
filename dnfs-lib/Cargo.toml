@@ -9,15 +9,15 @@ cloudflare.workspace = true
 color-eyre.workspace = true
 futures.workspace = true
 heck.workspace = true
+hickory-resolver.workspace = true
 magic-crypt.workspace = true
 mime_guess.workspace = true
 securefmt.workspace = true
 sha256.workspace = true
 snap.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
 tracing-subscriber.workspace = true
-trust-dns-resolver.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
 rusty-hook.workspace = true

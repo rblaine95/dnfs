@@ -3,14 +3,14 @@
 
 use cloudflare::{endpoints::dns, framework::async_api};
 use color_eyre::eyre::Result;
-use securefmt::Debug;
-use thiserror::Error;
-use tracing::{debug, error, info, warn};
-use trust_dns_resolver::{
+use hickory_resolver::{
     name_server::{GenericConnector, TokioRuntimeProvider},
     proto::rr::rdata::TXT,
     AsyncResolver,
 };
+use securefmt::Debug;
+use thiserror::Error;
+use tracing::{debug, error, info, warn};
 
 const USAGE_AGREEMENT: &str = "I understand that DNFS is a terrible idea and I promise I will never use it for anything important ever";
 // Max TXT Content per record is 2048 characters

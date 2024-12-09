@@ -14,14 +14,14 @@ use color_eyre::{
 };
 use futures::stream::{self, StreamExt};
 use heck::ToKebabCase;
-use magic_crypt::MagicCryptTrait;
-use securefmt::Debug;
-use tracing::debug;
-use trust_dns_resolver::{
+use hickory_resolver::{
     name_server::{GenericConnector, TokioRuntimeProvider},
     proto::rr::rdata::TXT,
     AsyncResolver,
 };
+use magic_crypt::MagicCryptTrait;
+use securefmt::Debug;
+use tracing::debug;
 
 use crate::{
     file_record::FileRecord,

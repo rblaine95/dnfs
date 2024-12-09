@@ -4,13 +4,13 @@
 use cloudflare::{endpoints::dns, framework::async_api};
 use color_eyre::{eyre::WrapErr, Result};
 use futures::stream::{self, StreamExt};
-use securefmt::Debug;
-use tracing::{debug, info};
-use trust_dns_resolver::{
+use hickory_resolver::{
     name_server::{GenericConnector, TokioRuntimeProvider},
     proto::rr::rdata::TXT,
     AsyncResolver,
 };
+use securefmt::Debug;
+use tracing::{debug, info};
 
 use crate::{
     file::File,
