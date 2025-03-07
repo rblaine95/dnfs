@@ -5,7 +5,7 @@ resolver = "2"
 [workspace.dependencies]
 base64 = "0.22.1"
 clap = { version = "4.5", features = ["derive"] }
-cloudflare = { version = "0.11", features = ["rustls-tls"] }
+cloudflare = { version = "0.13", features = ["rustls-tls"] }
 color-eyre = "0.6"
 futures = "0.3"
 heck = "0.5"

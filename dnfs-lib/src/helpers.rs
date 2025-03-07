@@ -4,9 +4,9 @@
 use cloudflare::{endpoints::dns, framework::async_api};
 use color_eyre::eyre::Result;
 use hickory_resolver::{
+    AsyncResolver,
     name_server::{GenericConnector, TokioRuntimeProvider},
     proto::rr::rdata::TXT,
-    AsyncResolver,
 };
 use securefmt::Debug;
 use thiserror::Error;

@@ -1,13 +1,13 @@
 // This is extremely safe, it says so right here!
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 
 use std::{
     io::{self, Write},
     path::Path,
 };
 
-use clap::{arg, Args, Parser, Subcommand};
-use cloudflare::framework::{async_api, auth, Environment, HttpApiClientConfig};
+use clap::{Args, Parser, Subcommand, arg};
+use cloudflare::framework::{Environment, HttpApiClientConfig, async_api, auth};
 use color_eyre::eyre::Result;
 use config::Config;
 use dnfs_lib::{
@@ -16,8 +16,8 @@ use dnfs_lib::{
     helpers::{check_usage_agreement, get_all_files},
 };
 use hickory_resolver::{
-    config::{ResolverConfig, ResolverOpts},
     TokioAsyncResolver,
+    config::{ResolverConfig, ResolverOpts},
 };
 use securefmt::Debug;
 use tracing::{debug, warn};
@@ -90,7 +90,10 @@ async fn main() -> Result<()> {
 
     // Default log level is `info`
     if std::env::var("RUST_LOG").is_err() {
-        std::env::set_var("RUST_LOG", "info");
+        #[allow(unsafe_code)]
+        unsafe {
+            std::env::set_var("RUST_LOG", "info");
+        }
     }
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -98,7 +101,10 @@ async fn main() -> Result<()> {
         .init();
 
     // Default number of jobs for streams is 4
-    std::env::set_var("JOBS", cli.global.jobs.to_string());
+    #[allow(unsafe_code)]
+    unsafe {
+        std::env::set_var("JOBS", cli.global.jobs.to_string());
+    }
 
     // Load config
     let config = Config::new(Path::new("config.toml"))?;
@@ -191,7 +197,9 @@ async fn main() -> Result<()> {
             } else {
                 warn!("BE CAREFUL!");
                 warn!("This will purge all DNFS Files from the DNS zone");
-                print!("Are you sure you want to purge all data? This action cannot be undone. (y/N): ");
+                print!(
+                    "Are you sure you want to purge all data? This action cannot be undone. (y/N): "
+                );
                 io::stdout().flush().unwrap();
 
                 let mut input = String::new();
@@ -220,11 +228,11 @@ async fn main() -> Result<()> {
 mod tests {
     use std::path::Path;
 
-    use hickory_resolver::{config, TokioAsyncResolver};
+    use hickory_resolver::{TokioAsyncResolver, config};
 
     use crate::File;
 
-    use super::{check_usage_agreement, Config};
+    use super::{Config, check_usage_agreement};
 
     #[test]
     fn test_config() {
