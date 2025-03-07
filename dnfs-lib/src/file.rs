@@ -9,15 +9,15 @@ use std::{
 use base64::prelude::*;
 use cloudflare::framework::async_api;
 use color_eyre::{
-    eyre::{OptionExt, WrapErr},
     Result,
+    eyre::{OptionExt, WrapErr},
 };
 use futures::stream::{self, StreamExt};
 use heck::ToKebabCase;
 use hickory_resolver::{
+    AsyncResolver,
     name_server::{GenericConnector, TokioRuntimeProvider},
     proto::rr::rdata::TXT,
-    AsyncResolver,
 };
 use magic_crypt::MagicCryptTrait;
 use securefmt::Debug;
@@ -25,7 +25,7 @@ use tracing::debug;
 
 use crate::{
     file_record::FileRecord,
-    helpers::{write_txt_record, DNFSError, MAX_CHUNK_SIZE},
+    helpers::{DNFSError, MAX_CHUNK_SIZE, write_txt_record},
 };
 
 #[derive(Debug, Clone)]

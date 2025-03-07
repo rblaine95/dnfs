@@ -2,19 +2,19 @@
 #![forbid(unsafe_code)]
 
 use cloudflare::{endpoints::dns, framework::async_api};
-use color_eyre::{eyre::WrapErr, Result};
+use color_eyre::{Result, eyre::WrapErr};
 use futures::stream::{self, StreamExt};
 use hickory_resolver::{
+    AsyncResolver,
     name_server::{GenericConnector, TokioRuntimeProvider},
     proto::rr::rdata::TXT,
-    AsyncResolver,
 };
 use securefmt::Debug;
 use tracing::{debug, info};
 
 use crate::{
     file::File,
-    helpers::{get_all_files, get_record_id, write_txt_record, DNFSError},
+    helpers::{DNFSError, get_all_files, get_record_id, write_txt_record},
 };
 
 #[derive(Debug, Clone)]
@@ -120,13 +120,14 @@ impl FileRecord {
     ) -> Result<String> {
         let fqdn = format!("{name}.dnfs.{domain_name}", name = self.name);
         let content = format!(
-                "v={version} chunks={chunks} size={size} sha256hash={sha256} mime={mime} extension={extension}",
-                version = self.version,
-                chunks = self.chunks,
-                size = self.size,
-                sha256 = self.sha256,
-                mime = self.mime,
-                extension = self.extension.clone().unwrap_or_default());
+            "v={version} chunks={chunks} size={size} sha256hash={sha256} mime={mime} extension={extension}",
+            version = self.version,
+            chunks = self.chunks,
+            size = self.size,
+            sha256 = self.sha256,
+            mime = self.mime,
+            extension = self.extension.clone().unwrap_or_default()
+        );
         write_txt_record(&fqdn, &content, cf_client, zone_identifier, dry_run).await
     }
 

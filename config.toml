@@ -3,5 +3,5 @@ domainName = "bunkerlab.net"
 encryptionKey = "bunkerlab"
 
 [cloudflare]
-apiKey = "changeme"
-zoneId = "changeme"
+apiKey = "t9eq7RmAHmhrMSk1wiYf5ezSJxfT28mth4iJqO8Y"
+zoneId = "511186bc1f225fa035f02f5595c1fcf9"
