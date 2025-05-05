@@ -1,6 +1,6 @@
 [hooks]
 pre-commit = "mise run lint"
-pre-push = "mise run fmt.check"
+pre-push = "mise run fmt:check"
 
 [logging]
 verbose = true
