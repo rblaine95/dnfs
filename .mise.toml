@@ -9,6 +9,6 @@ run = "cargo clippy --all-targets --all-features -- -D warnings -Wclippy::pedant
 description = "Format project"
 run = "cargo fmt --all"
 
-[tasks."fmt.check"]
+[tasks."fmt:check"]
 description = "Check project format"
 run = "cargo fmt --all --check"
