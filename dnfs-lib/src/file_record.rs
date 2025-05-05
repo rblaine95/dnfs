@@ -1,7 +1,7 @@
 // This is extremely safe, it says so right here!
 #![forbid(unsafe_code)]
 
-use cloudflare::{endpoints::dns, framework::async_api};
+use cloudflare::{endpoints::dns::dns::DeleteDnsRecord, framework::client::async_api};
 use color_eyre::{Result, eyre::WrapErr};
 use futures::stream::{self, StreamExt};
 use hickory_resolver::{
@@ -164,7 +164,7 @@ impl FileRecord {
                             return Ok(());
                         }
                         cf_client
-                            .request(&dns::DeleteDnsRecord {
+                            .request(&DeleteDnsRecord {
                                 zone_identifier,
                                 identifier: chunk_id.as_str(),
                             })
@@ -184,7 +184,7 @@ impl FileRecord {
                 return Ok(());
             }
             cf_client
-                .request(&dns::DeleteDnsRecord {
+                .request(&DeleteDnsRecord {
                     zone_identifier,
                     identifier: id.as_str(),
                 })

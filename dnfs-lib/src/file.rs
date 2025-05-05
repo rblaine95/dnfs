@@ -7,7 +7,7 @@ use std::{
 };
 
 use base64::prelude::*;
-use cloudflare::framework::async_api;
+use cloudflare::framework::client::async_api;
 use color_eyre::{
     Result,
     eyre::{OptionExt, WrapErr},

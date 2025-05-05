@@ -1,7 +1,13 @@
 // This is extremely safe, it says so right here!
 #![forbid(unsafe_code)]
 
-use cloudflare::{endpoints::dns, framework::async_api};
+use cloudflare::{
+    endpoints::dns::dns::{
+        CreateDnsRecord, CreateDnsRecordParams, DnsContent, DnsRecord, ListDnsRecords,
+        ListDnsRecordsParams, UpdateDnsRecord, UpdateDnsRecordParams,
+    },
+    framework::client::async_api,
+};
 use color_eyre::eyre::Result;
 use hickory_resolver::{
     AsyncResolver,
@@ -42,9 +48,9 @@ pub async fn get_record_id(
     zone_identifier: &str,
 ) -> Option<String> {
     cf_client
-        .request(&dns::ListDnsRecords {
+        .request(&ListDnsRecords {
             zone_identifier,
-            params: dns::ListDnsRecordsParams {
+            params: ListDnsRecordsParams {
                 name: Some(name.to_string()),
                 ..Default::default()
             },
@@ -65,10 +71,10 @@ pub async fn get_record_id(
 pub async fn get_all_files(
     cf_client: &async_api::Client,
     zone_identifier: &str,
-) -> Result<Vec<dns::DnsRecord>> {
-    let request = dns::ListDnsRecords {
+) -> Result<Vec<DnsRecord>> {
+    let request = ListDnsRecords {
         zone_identifier,
-        params: dns::ListDnsRecordsParams {
+        params: ListDnsRecordsParams {
             ..Default::default()
         },
     };
@@ -102,12 +108,12 @@ pub async fn write_txt_record(
 
     if let Some(id) = identifier {
         info!("Existing Record for {name} found with ID: {id:?}");
-        let request = dns::UpdateDnsRecord {
+        let request = UpdateDnsRecord {
             zone_identifier,
             identifier: id.as_str(),
-            params: dns::UpdateDnsRecordParams {
+            params: UpdateDnsRecordParams {
                 name,
-                content: dns::DnsContent::TXT {
+                content: DnsContent::TXT {
                     content: content.to_string(),
                 },
                 proxied: None,
@@ -123,11 +129,11 @@ pub async fn write_txt_record(
             Ok(response.result.name)
         }
     } else {
-        let request = dns::CreateDnsRecord {
+        let request = CreateDnsRecord {
             zone_identifier,
-            params: dns::CreateDnsRecordParams {
+            params: CreateDnsRecordParams {
                 name,
-                content: dns::DnsContent::TXT {
+                content: DnsContent::TXT {
                     content: content.to_string(),
                 },
                 priority: None,

@@ -7,7 +7,10 @@ use std::{
 };
 
 use clap::{Args, Parser, Subcommand, arg};
-use cloudflare::framework::{Environment, HttpApiClientConfig, async_api, auth};
+use cloudflare::framework::{
+    Environment, auth,
+    client::{ClientConfig, async_api},
+};
 use color_eyre::eyre::Result;
 use config::Config;
 use dnfs_lib::{
@@ -122,7 +125,7 @@ async fn main() -> Result<()> {
         auth::Credentials::UserAuthToken {
             token: config.cloudflare.api_key,
         },
-        HttpApiClientConfig::default(),
+        ClientConfig::default(),
         Environment::Production,
     )?;
 
@@ -228,6 +231,10 @@ async fn main() -> Result<()> {
 mod tests {
     use std::path::Path;
 
+    use cloudflare::framework::{
+        Environment, auth,
+        client::{ClientConfig, async_api},
+    };
     use hickory_resolver::{TokioAsyncResolver, config};
 
     use crate::File;
@@ -265,12 +272,12 @@ mod tests {
     #[tokio::test]
     async fn test_upload() {
         let config = Config::new(Path::new("config.toml")).unwrap();
-        let cf_client = cloudflare::framework::async_api::Client::new(
-            cloudflare::framework::auth::Credentials::UserAuthToken {
+        let cf_client = async_api::Client::new(
+            auth::Credentials::UserAuthToken {
                 token: config.cloudflare.api_key,
             },
-            cloudflare::framework::HttpApiClientConfig::default(),
-            cloudflare::framework::Environment::Production,
+            ClientConfig::default(),
+            Environment::Production,
         )
         .unwrap();
 
