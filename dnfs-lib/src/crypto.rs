@@ -20,7 +20,7 @@ use argon2::{Argon2, Params};
 use base64::prelude::*;
 use rand::Rng;
 
-use crate::helpers::{DnfsError, Result};
+use crate::error::DnfsError;
 
 /// Size of the AES-256 key in bytes.
 const KEY_SIZE: usize = 32;
@@ -75,7 +75,7 @@ impl Encryptor {
     ///
     /// let encryptor = Encryptor::new("my-secret-password", "example.com").unwrap();
     /// ```
-    pub fn new(password: &str, salt: &str) -> Result<Self> {
+    pub fn new(password: &str, salt: &str) -> Result<Self, DnfsError> {
         let key_bytes = derive_key(password, salt)?;
         let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
         let cipher = Aes256Gcm::new(key);
@@ -90,7 +90,7 @@ impl Encryptor {
     /// # Errors
     ///
     /// Returns an error if encryption fails (should not happen with valid inputs).
-    pub fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>> {
+    pub fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, DnfsError> {
         // Generate a random nonce for each encryption
         let nonce_bytes: [u8; NONCE_SIZE] = rand::rng().random();
         let nonce = Nonce::from_slice(&nonce_bytes);
@@ -98,7 +98,7 @@ impl Encryptor {
         let ciphertext = self
             .cipher
             .encrypt(nonce, plaintext)
-            .map_err(|e| DnfsError::EncryptionError(e.to_string()))?;
+            .map_err(|e| DnfsError::Encryption(e.to_string()))?;
 
         // Prepend nonce to ciphertext
         let mut result = Vec::with_capacity(NONCE_SIZE + ciphertext.len());
@@ -117,9 +117,9 @@ impl Encryptor {
     /// Returns an error if:
     /// - The ciphertext is too short to contain a nonce
     /// - The authentication tag is invalid (data was tampered with)
-    pub fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>> {
+    pub fn decrypt(&self, ciphertext: &[u8]) -> Result<Vec<u8>, DnfsError> {
         if ciphertext.len() < NONCE_SIZE {
-            return Err(DnfsError::EncryptionError(
+            return Err(DnfsError::Encryption(
                 "Ciphertext too short to contain nonce".to_string(),
             ));
         }
@@ -129,7 +129,7 @@ impl Encryptor {
 
         self.cipher
             .decrypt(nonce, encrypted_data)
-            .map_err(|e| DnfsError::EncryptionError(format!("Decryption failed: {e}")))
+            .map_err(|e| DnfsError::Encryption(format!("Decryption failed: {e}")))
     }
 
     /// Encrypts data and returns it as a base64-encoded string.
@@ -139,7 +139,7 @@ impl Encryptor {
     /// # Errors
     ///
     /// Returns an error if encryption fails.
-    pub fn encrypt_to_base64(&self, plaintext: &[u8]) -> Result<String> {
+    pub fn encrypt_to_base64(&self, plaintext: &[u8]) -> Result<String, DnfsError> {
         let ciphertext = self.encrypt(plaintext)?;
         Ok(BASE64_STANDARD.encode(ciphertext))
     }
@@ -151,7 +151,7 @@ impl Encryptor {
     /// Returns an error if:
     /// - The base64 decoding fails
     /// - Decryption fails (authentication tag mismatch)
-    pub fn decrypt_from_base64(&self, encoded: &str) -> Result<Vec<u8>> {
+    pub fn decrypt_from_base64(&self, encoded: &str) -> Result<Vec<u8>, DnfsError> {
         let ciphertext = BASE64_STANDARD.decode(encoded)?;
         self.decrypt(&ciphertext)
     }
@@ -168,7 +168,7 @@ impl Encryptor {
 /// Argon2id is the recommended variant that provides both:
 /// - Side-channel resistance (from Argon2i)
 /// - GPU/ASIC resistance (from Argon2d)
-fn derive_key(password: &str, domain: &str) -> Result<[u8; KEY_SIZE]> {
+fn derive_key(password: &str, domain: &str) -> Result<[u8; KEY_SIZE], DnfsError> {
     let mut key = [0u8; KEY_SIZE];
 
     // Use SHA-256 hash of domain as salt for consistent 32-byte salt
@@ -178,13 +178,13 @@ fn derive_key(password: &str, domain: &str) -> Result<[u8; KEY_SIZE]> {
     // Argon2 parameters: moderate memory and iterations for reasonable performance
     // m=19456 (19 MiB), t=2 iterations, p=1 parallelism
     let params = Params::new(19456, 2, 1, Some(KEY_SIZE))
-        .map_err(|e| DnfsError::EncryptionError(format!("Invalid Argon2 params: {e}")))?;
+        .map_err(|e| DnfsError::Encryption(format!("Invalid Argon2 params: {e}")))?;
 
     let argon2 = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
 
     argon2
         .hash_password_into(password.as_bytes(), salt, &mut key)
-        .map_err(|e| DnfsError::EncryptionError(format!("Key derivation failed: {e}")))?;
+        .map_err(|e| DnfsError::Encryption(format!("Key derivation failed: {e}")))?;
 
     Ok(key)
 }

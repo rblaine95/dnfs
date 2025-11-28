@@ -12,14 +12,70 @@ use securefmt::Debug;
 use tracing::{debug, info};
 
 use crate::{
+    dns::{get_all_files, get_record_id, write_txt_record},
+    error::DnfsError,
     file::File,
-    helpers::{
-        DEFAULT_CONCURRENCY, DnfsError, Result, get_all_files, get_record_id, write_txt_record,
-    },
+    helpers::DEFAULT_CONCURRENCY,
 };
 
 /// Current DNFS protocol version.
 const DNFS_VERSION: &str = "dnfs1";
+
+/// Options for DNS operations (delete, purge).
+pub struct DnsOperationOptions<'a> {
+    /// Cloudflare API client.
+    pub cf_client: &'a async_api::Client,
+    /// Cloudflare Zone ID.
+    pub zone_id: &'a str,
+    /// DNS resolver for looking up records.
+    pub resolver: &'a TokioResolver,
+    /// Number of concurrent operations.
+    pub concurrency: usize,
+    /// Whether to perform a dry run without modifying records.
+    pub dry_run: bool,
+}
+
+impl<'a> DnsOperationOptions<'a> {
+    /// Creates new DNS operation options.
+    #[must_use]
+    pub fn new(
+        cf_client: &'a async_api::Client,
+        zone_id: &'a str,
+        resolver: &'a TokioResolver,
+    ) -> Self {
+        Self {
+            cf_client,
+            zone_id,
+            resolver,
+            concurrency: DEFAULT_CONCURRENCY,
+            dry_run: false,
+        }
+    }
+
+    /// Sets the concurrency level for parallel operations.
+    #[must_use]
+    pub const fn with_concurrency(mut self, concurrency: usize) -> Self {
+        self.concurrency = concurrency;
+        self
+    }
+
+    /// Enables or disables dry run mode.
+    #[must_use]
+    pub const fn with_dry_run(mut self, dry_run: bool) -> Self {
+        self.dry_run = dry_run;
+        self
+    }
+}
+
+impl std::fmt::Debug for DnsOperationOptions<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DnsOperationOptions")
+            .field("zone_id", &self.zone_id)
+            .field("concurrency", &self.concurrency)
+            .field("dry_run", &self.dry_run)
+            .finish()
+    }
+}
 
 /// Metadata record for a file stored in DNFS.
 ///
@@ -49,7 +105,7 @@ impl FileRecord {
     /// # Errors
     ///
     /// Returns an error if the file name is invalid or empty.
-    pub fn new(file: &File) -> Result<Self> {
+    pub fn new(file: &File) -> Result<Self, DnfsError> {
         let name = file
             .name
             .split('.')
@@ -70,7 +126,7 @@ impl FileRecord {
     }
 
     /// Parses a `FileRecord` from TXT record content.
-    fn from_txt(name: &str, txt: &str) -> Result<Self> {
+    fn from_txt(name: &str, txt: &str) -> Result<Self, DnfsError> {
         let mut chunks = None;
         let mut extension = None;
         let mut mime = None;
@@ -129,7 +185,10 @@ impl FileRecord {
     /// # Errors
     ///
     /// Returns an error if the DNS lookup fails or the record cannot be parsed.
-    pub async fn from_dns_record(file_fqdn: &str, resolver: &TokioResolver) -> Result<Self> {
+    pub async fn from_dns_record(
+        file_fqdn: &str,
+        resolver: &TokioResolver,
+    ) -> Result<Self, DnfsError> {
         let file_lookup = resolver.txt_lookup(file_fqdn).await?;
         let file_txt = file_lookup
             .iter()
@@ -165,7 +224,7 @@ impl FileRecord {
         zone_identifier: &str,
         domain_name: &str,
         dry_run: bool,
-    ) -> Result<String> {
+    ) -> Result<String, DnfsError> {
         let fqdn = format!("{}.dnfs.{domain_name}", self.name);
         let content = format!(
             "v={} chunks={} size={} sha256hash={} mime={} extension={}",
@@ -191,7 +250,7 @@ impl FileRecord {
         resolver: &TokioResolver,
         concurrency: usize,
         dry_run: bool,
-    ) -> Result<()> {
+    ) -> Result<(), DnfsError> {
         info!("Deleting file: {file_fqdn}");
 
         let file_id = get_record_id(file_fqdn, cf_client, zone_identifier)
@@ -232,10 +291,10 @@ impl FileRecord {
                 Ok::<(), DnfsError>(())
             })
             .buffer_unordered(concurrency)
-            .collect::<Vec<Result<()>>>()
+            .collect::<Vec<Result<(), DnfsError>>>()
             .await
             .into_iter()
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<Result<Vec<_>, DnfsError>>()?;
 
         // Delete the file record itself
         if dry_run {
@@ -263,7 +322,7 @@ impl FileRecord {
         resolver: &TokioResolver,
         concurrency: usize,
         dry_run: bool,
-    ) -> Result<()> {
+    ) -> Result<(), DnfsError> {
         let records = get_all_files(cf_client, zone_identifier).await?;
 
         for record in records {

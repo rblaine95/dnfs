@@ -4,10 +4,7 @@
 
 #![forbid(unsafe_code)]
 
-use std::{
-    io::{self, Write},
-    path::Path,
-};
+use std::{io, path::Path};
 
 use clap::{Args, Parser, Subcommand};
 use cloudflare::framework::{
@@ -15,18 +12,18 @@ use cloudflare::framework::{
     client::{ClientConfig, async_api},
 };
 use color_eyre::eyre::Result;
-use config::Config;
-use dnfs_lib::{
-    DEFAULT_CONCURRENCY, Encryptor, File, FileRecord, check_usage_agreement, get_all_files,
-};
 use hickory_resolver::{
     TokioResolver,
     config::{ResolverConfig, ResolverOpts},
     name_server::TokioConnectionProvider,
 };
 use securefmt::Debug;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
+use config::Config;
+use dnfs_lib::{DEFAULT_CONCURRENCY, check_usage_agreement};
+
+mod commands;
 mod config;
 
 #[derive(Parser, Debug)]
@@ -80,7 +77,7 @@ struct UploadArgs {
     /// Path to the file to upload
     path: String,
 
-    /// Encrypt the file using AES-256 (requires `encryption_key` in config)
+    /// Encrypt the file using AES-256 (requires `encryptionKey` in config)
     #[arg(short, long)]
     encrypt: bool,
 }
@@ -90,7 +87,7 @@ struct DownloadArgs {
     /// The file FQDN to download (e.g., myfile.dnfs.example.com)
     fqdn: String,
 
-    /// Decrypt the file (requires `encryption_key` in config)
+    /// Decrypt the file (requires `encryptionKey` in config)
     #[arg(short, long)]
     decrypt: bool,
 }
@@ -157,107 +154,21 @@ async fn run_command(
     cf_client: &async_api::Client,
     resolver: &TokioResolver,
 ) -> Result<()> {
-    let jobs = cli.global.jobs;
-    let dry_run = cli.global.dry_run;
+    let ctx = commands::CommandContext::new(
+        config,
+        cf_client,
+        resolver,
+        cli.global.jobs,
+        cli.global.dry_run,
+    );
 
     match &cli.command {
-        Commands::Upload(args) => {
-            let magic_crypt = get_encryption_key(config, args.encrypt)?;
-            let file = File::new(Path::new(&args.path))?;
-
-            let file_fqdn = file
-                .upload(
-                    cf_client,
-                    &config.cloudflare.zone_id,
-                    &config.dnfs.domain_name,
-                    magic_crypt.as_ref(),
-                    jobs,
-                    dry_run,
-                )
-                .await?;
-
-            println!("File successfully uploaded: {file_fqdn}");
-        }
-
-        Commands::Download(args) => {
-            let magic_crypt = get_encryption_key(config, args.decrypt)?;
-            let file = File::read(&args.fqdn, resolver, magic_crypt.as_ref()).await?;
-            file.write_to_stdout()?;
-        }
-
-        Commands::Delete { fqdn } => {
-            FileRecord::delete(
-                fqdn,
-                cf_client,
-                &config.cloudflare.zone_id,
-                resolver,
-                jobs,
-                dry_run,
-            )
-            .await?;
-            println!("File successfully deleted: {fqdn}");
-        }
-
-        Commands::List => {
-            let records = get_all_files(cf_client, &config.cloudflare.zone_id).await?;
-            for record in records {
-                println!("{}", record.name);
-            }
-        }
-
-        Commands::Purge { force } => {
-            if !*force && !confirm_purge()? {
-                warn!("Purge aborted");
-                return Ok(());
-            }
-
-            if *force {
-                warn!("Force flag set, skipping confirmation");
-            }
-
-            info!("By fire be purged");
-            FileRecord::purge(
-                cf_client,
-                &config.cloudflare.zone_id,
-                resolver,
-                jobs,
-                dry_run,
-            )
-            .await?;
-            warn!("All files successfully purged");
-        }
+        Commands::Upload(args) => commands::upload(&ctx, &args.path, args.encrypt).await,
+        Commands::Download(args) => commands::download(&ctx, &args.fqdn, args.decrypt).await,
+        Commands::Delete { fqdn } => commands::delete(&ctx, fqdn).await,
+        Commands::List => commands::list(&ctx).await,
+        Commands::Purge { force } => commands::purge(&ctx, *force).await,
     }
-
-    Ok(())
-}
-
-/// Gets the encryptor if encryption is requested.
-///
-/// Creates an AES-256-GCM encryptor with key derived from the config's
-/// `encryption_key` using Argon2id with the domain name as salt.
-fn get_encryption_key(config: &Config, encrypt: bool) -> Result<Option<Encryptor>> {
-    if !encrypt {
-        return Ok(None);
-    }
-
-    let key = config.dnfs.encryption_key.as_ref().ok_or_else(|| {
-        color_eyre::eyre::eyre!("Encryption requested but no encryption_key in config")
-    })?;
-
-    Ok(Some(Encryptor::new(key, &config.dnfs.domain_name)?))
-}
-
-/// Prompts the user to confirm the purge operation.
-fn confirm_purge() -> Result<bool> {
-    warn!("BE CAREFUL!");
-    warn!("This will purge ALL DNFS files from the DNS zone");
-    print!("Are you sure you want to purge all data? This action cannot be undone. (y/N): ");
-    io::stdout().flush()?;
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-
-    Ok(input.trim().eq_ignore_ascii_case("y"))
 }
 
 #[cfg(test)]

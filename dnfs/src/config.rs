@@ -47,9 +47,9 @@ impl Config {
     /// Returns an error if the file cannot be read or parsed.
     pub fn load(path: &Path) -> Result<Self, DnfsError> {
         let content = std::fs::read_to_string(path)
-            .map_err(|e| DnfsError::ConfigError(format!("failed to read config file: {e}")))?;
+            .map_err(|e| DnfsError::Config(format!("failed to read config file: {e}")))?;
 
         toml::from_str(&content)
-            .map_err(|e| DnfsError::ConfigError(format!("failed to parse config: {e}")))
+            .map_err(|e| DnfsError::Config(format!("failed to parse config: {e}")))
     }
 }

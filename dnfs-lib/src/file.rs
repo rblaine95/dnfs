@@ -20,9 +20,75 @@ use tracing::debug;
 
 use crate::{
     crypto::Encryptor,
+    dns::write_txt_record,
+    error::DnfsError,
     file_record::FileRecord,
-    helpers::{DEFAULT_CONCURRENCY, DnfsError, MAX_CHUNK_SIZE, Result, write_txt_record},
+    helpers::{DEFAULT_CONCURRENCY, MAX_CHUNK_SIZE},
 };
+
+/// Options for uploading a file to DNS.
+pub struct UploadOptions<'a> {
+    /// Cloudflare API client.
+    pub cf_client: &'a async_api::Client,
+    /// Cloudflare Zone ID.
+    pub zone_id: &'a str,
+    /// Domain name for DNFS records.
+    pub domain_name: &'a str,
+    /// Optional encryptor for encrypting chunks.
+    pub encryptor: Option<&'a Encryptor>,
+    /// Number of concurrent upload operations.
+    pub concurrency: usize,
+    /// Whether to perform a dry run without modifying records.
+    pub dry_run: bool,
+}
+
+impl std::fmt::Debug for UploadOptions<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("UploadOptions")
+            .field("zone_id", &self.zone_id)
+            .field("domain_name", &self.domain_name)
+            .field("encryptor", &self.encryptor.map(|_| "[PRESENT]"))
+            .field("concurrency", &self.concurrency)
+            .field("dry_run", &self.dry_run)
+            .finish()
+    }
+}
+
+impl<'a> UploadOptions<'a> {
+    /// Creates new upload options.
+    #[must_use]
+    pub fn new(cf_client: &'a async_api::Client, zone_id: &'a str, domain_name: &'a str) -> Self {
+        Self {
+            cf_client,
+            zone_id,
+            domain_name,
+            encryptor: None,
+            concurrency: DEFAULT_CONCURRENCY,
+            dry_run: false,
+        }
+    }
+
+    /// Sets the encryptor for encrypting file chunks.
+    #[must_use]
+    pub const fn with_encryptor(mut self, encryptor: Option<&'a Encryptor>) -> Self {
+        self.encryptor = encryptor;
+        self
+    }
+
+    /// Sets the concurrency level for parallel uploads.
+    #[must_use]
+    pub const fn with_concurrency(mut self, concurrency: usize) -> Self {
+        self.concurrency = concurrency;
+        self
+    }
+
+    /// Enables or disables dry run mode.
+    #[must_use]
+    pub const fn with_dry_run(mut self, dry_run: bool) -> Self {
+        self.dry_run = dry_run;
+        self
+    }
+}
 
 /// A file that can be stored in DNFS.
 ///
@@ -63,7 +129,7 @@ impl File {
     /// - The file name is invalid
     /// - The file cannot be read
     /// - Compression fails
-    pub fn new(path: &Path) -> Result<Self> {
+    pub fn new(path: &Path) -> Result<Self, DnfsError> {
         let file_name = path
             .file_name()
             .ok_or_else(|| DnfsError::InvalidFileName(path.display().to_string()))?
@@ -78,7 +144,7 @@ impl File {
         let sha256 = sha256::digest(&data);
         let compressed_data = snap::raw::Encoder::new()
             .compress_vec(&data)
-            .map_err(|e| DnfsError::CompressionError(e.to_string()))?;
+            .map_err(|e| DnfsError::Compression(e.to_string()))?;
 
         let extension = path
             .extension()
@@ -122,53 +188,45 @@ impl File {
         encryptor: Option<&Encryptor>,
         concurrency: usize,
         dry_run: bool,
-    ) -> Result<String> {
+    ) -> Result<String, DnfsError> {
         let file_record = FileRecord::new(self)?;
         let file_fqdn = file_record
             .create(cf_client, zone_identifier, domain_name, dry_run)
             .await?;
 
-        self.upload_chunks(
-            cf_client,
-            zone_identifier,
-            domain_name,
-            &file_record,
-            encryptor,
-            concurrency,
-            dry_run,
-        )
-        .await?;
+        let opts = UploadOptions::new(cf_client, zone_identifier, domain_name)
+            .with_encryptor(encryptor)
+            .with_concurrency(concurrency)
+            .with_dry_run(dry_run);
+
+        self.upload_chunks(&file_record, &opts).await?;
 
         Ok(file_fqdn)
     }
 
     /// Uploads all file chunks in parallel.
-    #[allow(clippy::too_many_arguments)]
     async fn upload_chunks(
         &self,
-        cf_client: &async_api::Client,
-        zone_identifier: &str,
-        domain_name: &str,
         file_record: &FileRecord,
-        encryptor: Option<&Encryptor>,
-        concurrency: usize,
-        dry_run: bool,
-    ) -> Result<Vec<String>> {
-        let concurrency = if concurrency == 0 {
+        opts: &UploadOptions<'_>,
+    ) -> Result<Vec<String>, DnfsError> {
+        let concurrency = if opts.concurrency == 0 {
             DEFAULT_CONCURRENCY
         } else {
-            concurrency
+            opts.concurrency
         };
 
         stream::iter(&self.data)
             .map(|chunk| {
                 let chunk_fqdn = format!(
-                    "chunk{}.{}.dnfs.{domain_name}",
-                    chunk.index, file_record.name,
+                    "chunk{}.{}.dnfs.{}",
+                    chunk.index, file_record.name, opts.domain_name,
                 );
-                let zone_id = zone_identifier.to_string();
+                let zone_id = opts.zone_id.to_string();
+                let cf_client = opts.cf_client;
+                let dry_run = opts.dry_run;
 
-                let encoded_data = match encryptor {
+                let encoded_data = match opts.encryptor {
                     Some(enc) => enc.encrypt_to_base64(&chunk.data),
                     None => Ok(BASE64_STANDARD.encode(&chunk.data)),
                 };
@@ -179,7 +237,7 @@ impl File {
                 }
             })
             .buffer_unordered(concurrency)
-            .collect::<Vec<Result<String>>>()
+            .collect::<Vec<Result<String, DnfsError>>>()
             .await
             .into_iter()
             .collect()
@@ -200,7 +258,7 @@ impl File {
         file_fqdn: &str,
         resolver: &TokioResolver,
         encryptor: Option<&Encryptor>,
-    ) -> Result<Self> {
+    ) -> Result<Self, DnfsError> {
         debug!("Reading file: {file_fqdn}");
 
         let file_record = FileRecord::from_dns_record(file_fqdn, resolver).await?;
@@ -217,7 +275,7 @@ impl File {
         // Decompress and verify hash
         let uncompressed_data = snap::raw::Decoder::new()
             .decompress_vec(&compressed_data)
-            .map_err(|e| DnfsError::CompressionError(e.to_string()))?;
+            .map_err(|e| DnfsError::Compression(e.to_string()))?;
 
         let computed_hash = sha256::digest(&uncompressed_data);
         if computed_hash != file_record.sha256 {
@@ -244,7 +302,7 @@ impl File {
     /// # Errors
     ///
     /// Returns an error if decompression or writing fails.
-    pub fn write_to_stdout(&self) -> Result<()> {
+    pub fn write_to_stdout(&self) -> Result<(), DnfsError> {
         let decompressed = self.decompress()?;
         io::stdout().write_all(&decompressed)?;
         Ok(())
@@ -256,13 +314,13 @@ impl File {
     ///
     /// Returns an error if decompression fails or the content is not valid UTF-8.
     #[allow(dead_code)]
-    pub fn to_string(&self) -> Result<String> {
+    pub fn to_string(&self) -> Result<String, DnfsError> {
         let decompressed = self.decompress()?;
         Ok(String::from_utf8(decompressed)?)
     }
 
     /// Decompresses the file data.
-    fn decompress(&self) -> Result<Vec<u8>> {
+    fn decompress(&self) -> Result<Vec<u8>, DnfsError> {
         let compressed: Vec<u8> = self
             .data
             .iter()
@@ -272,7 +330,7 @@ impl File {
 
         snap::raw::Decoder::new()
             .decompress_vec(&compressed)
-            .map_err(|e| DnfsError::CompressionError(e.to_string()))
+            .map_err(|e| DnfsError::Compression(e.to_string()))
     }
 
     /// Downloads all chunks for a file from DNS.
@@ -281,7 +339,7 @@ impl File {
         file_record: &FileRecord,
         resolver: &TokioResolver,
         encryptor: Option<&Encryptor>,
-    ) -> Result<Vec<Chunk>> {
+    ) -> Result<Vec<Chunk>, DnfsError> {
         debug!("Downloading chunks for: {file_fqdn}");
 
         let domain_name =
