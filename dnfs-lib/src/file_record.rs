@@ -35,7 +35,12 @@ impl FileRecord {
             chunks: file.data.len(),
             extension: file.extension.clone(),
             mime: file.mime.clone(),
-            name: file.name.split('.').next().unwrap().to_string(),
+            name: file
+                .name
+                .split('.')
+                .next()
+                .expect("File name should have at least one part")
+                .to_string(),
             sha256: file.sha256.clone(),
             size: file.data.iter().map(|chunk| chunk.data.len()).sum(),
             version: "dnfs1".to_string(),
@@ -52,15 +57,15 @@ impl FileRecord {
 
         for pair in txt.split(' ') {
             let mut split = pair.split('=');
-            let key = split.next().unwrap();
-            let value = split.next().unwrap();
+            let key = split.next().expect("Key-value pair should have a key");
+            let value = split.next().expect("Key-value pair should have a value");
 
             match key {
-                "chunks" => chunks = value.parse().unwrap(),
+                "chunks" => chunks = value.parse().expect("chunks should be a valid number"),
                 "extension" => extension = Some(value.to_string()),
                 "mime" => mime = value.to_string(),
                 "sha256hash" => sha256 = value.to_string(),
-                "size" => size = value.parse().unwrap(),
+                "size" => size = value.parse().expect("size should be a valid number"),
                 "v" => version = value.to_string(),
                 _ => (),
             }
@@ -95,7 +100,10 @@ impl FileRecord {
         debug!("File Data: {file_txt:?}");
 
         Ok(Self::from_txt(
-            file_fqdn.split('.').next().unwrap(),
+            file_fqdn
+                .split('.')
+                .next()
+                .expect("FQDN should have at least one part"),
             file_txt,
         ))
     }

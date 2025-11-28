@@ -2,6 +2,11 @@
 members = ["dnfs", "dnfs-lib"]
 resolver = "2"
 
+[workspace.lints.clippy]
+enum_glob_use = "deny"
+pedantic = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+
 [workspace.dependencies]
 base64 = "0.22.1"
 clap = { version = "4.5", features = ["derive"] }

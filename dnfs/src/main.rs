@@ -208,10 +208,12 @@ async fn main() -> Result<()> {
                 print!(
                     "Are you sure you want to purge all data? This action cannot be undone. (y/N): "
                 );
-                io::stdout().flush().unwrap();
+                io::stdout().flush().expect("Failed to flush stdout");
 
                 let mut input = String::new();
-                io::stdin().read_line(&mut input).unwrap();
+                io::stdin()
+                    .read_line(&mut input)
+                    .expect("Failed to read line from stdin");
 
                 if input.trim().to_lowercase() == "y" {
                     println!("By fire be purged");
@@ -280,7 +282,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_upload() {
-        let config = Config::new(Path::new("config.toml")).unwrap();
+        let config = Config::new(Path::new("config.toml")).expect("Failed to load config");
         let cf_client = async_api::Client::new(
             auth::Credentials::UserAuthToken {
                 token: config.cloudflare.api_key,
@@ -288,9 +290,9 @@ mod tests {
             ClientConfig::default(),
             Environment::Production,
         )
-        .unwrap();
+        .expect("Failed to create Cloudflare client");
 
-        let test = File::new(Path::new("test.txt")).unwrap();
+        let test = File::new(Path::new("test.txt")).expect("Failed to create file");
         let result = test
             .upload(
                 &cf_client,
@@ -322,14 +324,16 @@ mod tests {
         .await;
         assert!(file.is_ok());
 
-        let file_data = file
-            .unwrap()
-            .data
-            .iter()
-            .fold(String::new(), |mut acc, chunk| {
-                acc.push_str(std::str::from_utf8(&chunk.data).unwrap());
-                acc
-            });
+        let file_data =
+            file.expect("File should be Ok")
+                .data
+                .iter()
+                .fold(String::new(), |mut acc, chunk| {
+                    acc.push_str(
+                        std::str::from_utf8(&chunk.data).expect("Chunk data should be valid UTF-8"),
+                    );
+                    acc
+                });
         println!("{file_data:?}");
     }
 }

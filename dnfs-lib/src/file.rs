@@ -241,7 +241,10 @@ impl File {
 
         // use `file_fqdn` to get the domain name
         // `file_name.dnfs.domain_name.tld`
-        let domain_name = file_fqdn.split(".dnfs.").last().unwrap();
+        let domain_name = file_fqdn
+            .split(".dnfs.")
+            .last()
+            .expect("FQDN should contain .dnfs.");
 
         debug!("Domain name: {domain_name}");
 
