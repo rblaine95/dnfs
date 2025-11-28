@@ -14,11 +14,7 @@ use color_eyre::{
 };
 use futures::stream::{self, StreamExt};
 use heck::ToKebabCase;
-use hickory_resolver::{
-    AsyncResolver,
-    name_server::{GenericConnector, TokioRuntimeProvider},
-    proto::rr::rdata::TXT,
-};
+use hickory_resolver::{TokioResolver, proto::rr::rdata::TXT};
 use magic_crypt::MagicCryptTrait;
 use securefmt::Debug;
 use tracing::debug;
@@ -68,7 +64,7 @@ impl File {
             || "application/octet-stream".to_string(),
             |mime| mime.essence_str().to_string(),
         );
-        let sha256 = sha256::digest(data.as_slice()).to_string();
+        let sha256 = sha256::digest(data.as_slice()).clone();
 
         Ok(Self {
             data: compressed_data
@@ -169,9 +165,9 @@ impl File {
     /// This function will return an error if the file cannot be read, the file cannot be decompressed, or the sha256 hash is invalid
     pub async fn read(
         file_fqdn: &str,
-        resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
+        resolver: &TokioResolver,
         magic_crypt: Option<&magic_crypt::MagicCrypt256>,
-    ) -> Result<File> {
+    ) -> Result<Self> {
         debug!("Reading file: {file_fqdn}");
 
         let file_record = FileRecord::from_dns_record(file_fqdn, resolver).await?;
@@ -183,7 +179,7 @@ impl File {
             acc
         });
         let uncompressed_data = snap::raw::Decoder::new().decompress_vec(&compressed_data)?;
-        let file_sha256 = sha256::digest(uncompressed_data.as_slice()).to_string();
+        let file_sha256 = sha256::digest(uncompressed_data.as_slice()).clone();
 
         if file_sha256 != file_record.sha256 {
             return Err(DNFSError::InvalidSHA256(file_record.sha256).into());
@@ -238,7 +234,7 @@ impl File {
     async fn get_chunks(
         file_fqdn: &str,
         file_record: &FileRecord,
-        resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
+        resolver: &TokioResolver,
         magic_crypt: Option<&magic_crypt::MagicCrypt256>,
     ) -> Result<Vec<Chunk>> {
         debug!("Getting chunks for file: {file_fqdn}");

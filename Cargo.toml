@@ -9,7 +9,7 @@ cloudflare = { version = "0.14", features = ["rustls-tls"] }
 color-eyre = "0.6"
 futures = "0.3"
 heck = "0.5"
-hickory-resolver = { version = "0.24", features = ["dns-over-rustls"] }
+hickory-resolver = { version = "0.25", features = ["tls-ring"] }
 magic-crypt = "4.0"
 mime_guess = "2.0"
 securefmt = "0.1"

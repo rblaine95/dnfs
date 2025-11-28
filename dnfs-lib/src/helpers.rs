@@ -9,11 +9,7 @@ use cloudflare::{
     framework::client::async_api,
 };
 use color_eyre::eyre::Result;
-use hickory_resolver::{
-    AsyncResolver,
-    name_server::{GenericConnector, TokioRuntimeProvider},
-    proto::rr::rdata::TXT,
-};
+use hickory_resolver::{TokioResolver, proto::rr::rdata::TXT};
 use securefmt::Debug;
 use thiserror::Error;
 use tracing::{debug, error, info, warn};
@@ -156,10 +152,7 @@ pub async fn write_txt_record(
 ///
 /// # Errors
 /// Returns an error if the TXT record is not found or if the content doesn't match
-pub async fn check_usage_agreement(
-    domain_name: &str,
-    resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
-) -> Result<()> {
+pub async fn check_usage_agreement(domain_name: &str, resolver: &TokioResolver) -> Result<()> {
     debug!("Checking DNFS usage agreement for {domain_name}");
     let usage_agreement_host = format!("_dnfs-agreement.{domain_name}");
     let usage_agreement = resolver.txt_lookup(usage_agreement_host.clone()).await?;

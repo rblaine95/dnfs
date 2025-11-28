@@ -4,11 +4,7 @@
 use cloudflare::{endpoints::dns::dns::DeleteDnsRecord, framework::client::async_api};
 use color_eyre::{Result, eyre::WrapErr};
 use futures::stream::{self, StreamExt};
-use hickory_resolver::{
-    AsyncResolver,
-    name_server::{GenericConnector, TokioRuntimeProvider},
-    proto::rr::rdata::TXT,
-};
+use hickory_resolver::{TokioResolver, proto::rr::rdata::TXT};
 use securefmt::Debug;
 use tracing::{debug, info};
 
@@ -88,10 +84,7 @@ impl FileRecord {
     ///
     /// # Panics
     /// This function will panic if the file name is invalid
-    pub async fn from_dns_record(
-        file_fqdn: &str, // `file_name.dnfs.domain_name`
-        resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
-    ) -> Result<Self> {
+    pub async fn from_dns_record(file_fqdn: &str, resolver: &TokioResolver) -> Result<Self> {
         let file_lookup = resolver.txt_lookup(file_fqdn).await?;
         let file_txt = file_lookup
             .iter()
@@ -139,7 +132,7 @@ impl FileRecord {
         file_fqdn: &str,
         cf_client: &async_api::Client,
         zone_identifier: &str,
-        resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
+        resolver: &TokioResolver,
         dry_run: bool,
     ) -> Result<()> {
         info!("Deleting file: {file_fqdn}");
@@ -202,7 +195,7 @@ impl FileRecord {
     pub async fn purge(
         cf_client: &async_api::Client,
         zone_identifier: &str,
-        resolver: &AsyncResolver<GenericConnector<TokioRuntimeProvider>>,
+        resolver: &TokioResolver,
         dry_run: bool,
     ) -> Result<()> {
         let records = get_all_files(cf_client, zone_identifier).await?;

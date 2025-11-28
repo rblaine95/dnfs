@@ -19,8 +19,9 @@ use dnfs_lib::{
     helpers::{check_usage_agreement, get_all_files},
 };
 use hickory_resolver::{
-    TokioAsyncResolver,
+    TokioResolver,
     config::{ResolverConfig, ResolverOpts},
+    name_server::TokioConnectionProvider,
 };
 use securefmt::Debug;
 use tracing::{debug, warn};
@@ -113,8 +114,12 @@ async fn main() -> Result<()> {
     let config = Config::new(Path::new("config.toml"))?;
     debug!("{config:?}");
 
-    let resolver =
-        TokioAsyncResolver::tokio(ResolverConfig::cloudflare_tls(), ResolverOpts::default());
+    let resolver = TokioResolver::builder_with_config(
+        ResolverConfig::cloudflare_tls(),
+        TokioConnectionProvider::default(),
+    )
+    .with_options(ResolverOpts::default())
+    .build();
 
     // Check usage agreement
     if let Err(e) = check_usage_agreement(&config.dnfs.domain_name, &resolver).await {
@@ -235,7 +240,7 @@ mod tests {
         Environment, auth,
         client::{ClientConfig, async_api},
     };
-    use hickory_resolver::{TokioAsyncResolver, config};
+    use hickory_resolver::{TokioResolver, config, name_server::TokioConnectionProvider};
 
     use crate::File;
 
@@ -249,10 +254,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_usage_agreement() {
-        let resolver = TokioAsyncResolver::tokio(
+        let resolver = TokioResolver::builder_with_config(
             config::ResolverConfig::cloudflare_tls(),
-            config::ResolverOpts::default(),
-        );
+            TokioConnectionProvider::default(),
+        )
+        .with_options(config::ResolverOpts::default())
+        .build();
 
         let result = check_usage_agreement("bunkerlab.net", &resolver).await;
         assert!(result.is_ok());
@@ -260,10 +267,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_usage_agreement_bad() {
-        let resolver = TokioAsyncResolver::tokio(
+        let resolver = TokioResolver::builder_with_config(
             config::ResolverConfig::cloudflare_tls(),
-            config::ResolverOpts::default(),
-        );
+            TokioConnectionProvider::default(),
+        )
+        .with_options(config::ResolverOpts::default())
+        .build();
 
         let result = check_usage_agreement("example.com", &resolver).await;
         assert!(result.is_err());
@@ -296,10 +305,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_from_dns_record() {
-        let resolver = hickory_resolver::TokioAsyncResolver::tokio(
+        let resolver = hickory_resolver::TokioResolver::builder_with_config(
             hickory_resolver::config::ResolverConfig::cloudflare_tls(),
-            hickory_resolver::config::ResolverOpts::default(),
-        );
+            hickory_resolver::name_server::TokioConnectionProvider::default(),
+        )
+        .with_options(hickory_resolver::config::ResolverOpts::default())
+        .build();
 
         let file_fqdn = "test.dnfs.bunkerlab.net";
 
