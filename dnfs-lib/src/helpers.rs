@@ -1,4 +1,8 @@
-// This is extremely safe, it says so right here!
+//! Helper functions and types for DNFS operations.
+//!
+//! This module contains utilities for interacting with Cloudflare DNS,
+//! error types, and constants used throughout the library.
+
 #![forbid(unsafe_code)]
 
 use cloudflare::{
@@ -8,42 +12,97 @@ use cloudflare::{
     },
     framework::client::async_api,
 };
-use color_eyre::eyre::Result;
 use hickory_resolver::{TokioResolver, proto::rr::rdata::TXT};
 use securefmt::Debug;
 use thiserror::Error;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
+/// The required TXT record content for DNFS usage agreement.
 const USAGE_AGREEMENT: &str = "I understand that DNFS is a terrible idea and I promise I will never use it for anything important ever";
-// Max TXT Content per record is 2048 characters
-// Base64 encoding adds ±33% (for every 3 bytes of input, you get 4 bytes out)
-// const MAX_TXT_CONTENT_SIZE: usize = 2048;
-// pub const MAX_CHUNK_SIZE: usize = (MAX_TXT_CONTENT_SIZE * 3) / 4;
-// BUT because we're encrypting now as well
-// 1536 in = 2078 out which is just a little too big
+
+/// Maximum chunk size in bytes.
+///
+/// Max TXT Content per record is 2048 characters.
+/// Base64 encoding adds ~33% overhead (4 bytes out for every 3 bytes in).
+/// With encryption, 1536 bytes in produces 2078 bytes out, which exceeds the limit.
+/// Therefore, we use 1500 bytes as a safe maximum.
 pub const MAX_CHUNK_SIZE: usize = 1500;
 
+/// Default number of concurrent operations.
+pub const DEFAULT_CONCURRENCY: usize = 4;
+
+/// Errors that can occur during DNFS operations.
 #[derive(Error, Debug)]
-pub enum DNFSError {
-    #[error("Invalid DNFS usage agreement: {0}")]
-    InvalidUsageAgreement(String),
-    #[error("Invalid SHA256 hash: {0}")]
-    InvalidSHA256(String),
-    #[error("Error parsing DNS record: {0}")]
-    ParseError(String),
-    #[error("Error parsing Config file: {0}")]
+pub enum DnfsError {
+    /// The DNFS usage agreement TXT record is missing or invalid.
+    #[error("invalid DNFS usage agreement for domain: {domain}")]
+    InvalidUsageAgreement { domain: String },
+
+    /// SHA256 hash verification failed.
+    #[error("SHA256 hash mismatch: expected {expected}, got {actual}")]
+    HashMismatch { expected: String, actual: String },
+
+    /// Failed to parse a DNS record.
+    #[error("failed to parse DNS record for '{name}': {reason}")]
+    ParseError { name: String, reason: String },
+
+    /// Configuration file error.
+    #[error("configuration error: {0}")]
     ConfigError(String),
-    #[error("Record not found: {0}")]
+
+    /// DNS record not found.
+    #[error("record not found: {0}")]
     RecordNotFound(String),
+
+    /// Invalid file name.
+    #[error("invalid file name: {0}")]
+    InvalidFileName(String),
+
+    /// Compression/decompression error.
+    #[error("compression error: {0}")]
+    CompressionError(String),
+
+    /// Encryption/decryption error.
+    #[error("encryption error: {0}")]
+    EncryptionError(String),
+
+    /// IO error.
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+
+    /// DNS lookup error.
+    #[error("DNS lookup failed: {0}")]
+    DnsLookupError(#[from] hickory_resolver::ResolveError),
+
+    /// Cloudflare API error.
+    #[error("Cloudflare API error: {0}")]
+    CloudflareError(#[from] cloudflare::framework::response::ApiFailure),
+
+    /// Base64 decode error.
+    #[error("base64 decode error: {0}")]
+    Base64Error(#[from] base64::DecodeError),
+
+    /// UTF-8 conversion error.
+    #[error("UTF-8 conversion error: {0}")]
+    Utf8Error(#[from] std::string::FromUtf8Error),
 }
 
-// Helper function to the ID of a specific record
+/// Result type alias for DNFS operations.
+pub type Result<T> = std::result::Result<T, DnfsError>;
+
+/// Gets the Cloudflare record ID for a DNS record by name.
+///
+/// Returns `None` if the record doesn't exist.
+///
+/// # Errors
+///
+/// Returns an error if the Cloudflare API request fails.
 pub async fn get_record_id(
     name: &str,
     cf_client: &async_api::Client,
     zone_identifier: &str,
-) -> Option<String> {
-    cf_client
+) -> Result<Option<String>> {
+    let response = cf_client
         .request(&ListDnsRecords {
             zone_identifier,
             params: ListDnsRecordsParams {
@@ -51,46 +110,54 @@ pub async fn get_record_id(
                 ..Default::default()
             },
         })
-        .await
-        .ok()?
+        .await?;
+
+    let record_id = response
         .result
         .iter()
-        .find(|record| record.name.eq(name))
-        .map(|record| record.id.clone())
+        .find(|record| record.name == name)
+        .map(|record| record.id.clone());
+
+    Ok(record_id)
 }
 
-/// Helper function to get all records under the `dnfs` subdomain
-/// Returns a `Vec` of all records of File FQDNs
+/// Gets all DNFS file records from the DNS zone.
+///
+/// Returns a list of DNS records for files (excluding chunk records).
 ///
 /// # Errors
-/// Returns an error if the request fails
+///
+/// Returns an error if the Cloudflare API request fails.
 pub async fn get_all_files(
     cf_client: &async_api::Client,
     zone_identifier: &str,
 ) -> Result<Vec<DnsRecord>> {
     let request = ListDnsRecords {
         zone_identifier,
-        params: ListDnsRecordsParams {
-            ..Default::default()
-        },
+        params: ListDnsRecordsParams::default(),
     };
-    debug!("Request: {request:?}");
+    debug!("Listing DNS records: {request:?}");
+
     let response = cf_client.request(&request).await?;
-    // Filter for records under the `dnfs` subdomain
+
+    // Filter for file records under the `dnfs` subdomain (excluding chunks)
     let records = response
         .result
         .into_iter()
         .filter(|record| record.name.contains(".dnfs") && !record.name.contains("chunk"))
         .collect();
+
     Ok(records)
 }
 
-/// Helper function to Write a TXT record
-/// Checks if record already exists
-/// If it does, update the record
+/// Writes a TXT record to Cloudflare DNS.
+///
+/// If a record with the same name already exists, it will be updated.
+/// Otherwise, a new record will be created.
 ///
 /// # Errors
-/// Returns an error if the request fails
+///
+/// Returns an error if the Cloudflare API request fails.
 pub async fn write_txt_record(
     name: &str,
     content: &str,
@@ -99,77 +166,84 @@ pub async fn write_txt_record(
     dry_run: bool,
 ) -> Result<String> {
     info!("Writing TXT record: {name:?}");
-    // Check if the record already exists
-    let identifier = get_record_id(name, cf_client, zone_identifier).await;
 
-    if let Some(id) = identifier {
-        info!("Existing Record for {name} found with ID: {id:?}");
+    let existing_id = get_record_id(name, cf_client, zone_identifier).await?;
+    let txt_content = DnsContent::TXT {
+        content: content.to_string(),
+    };
+
+    if dry_run {
+        info!(
+            "Dry run: would {} record {name}",
+            if existing_id.is_some() {
+                "update"
+            } else {
+                "create"
+            }
+        );
+        return Ok(name.to_string());
+    }
+
+    let result_name = if let Some(id) = existing_id {
+        info!("Updating existing record {name} (ID: {id})");
         let request = UpdateDnsRecord {
             zone_identifier,
-            identifier: id.as_str(),
+            identifier: &id,
             params: UpdateDnsRecordParams {
                 name,
-                content: DnsContent::TXT {
-                    content: content.to_string(),
-                },
+                content: txt_content,
                 proxied: None,
                 ttl: None,
             },
         };
-        debug!("Request: {request:?}");
-        if dry_run {
-            info!("Dry run enabled, not updating record");
-            Ok(name.to_string())
-        } else {
-            let response = cf_client.request(&request).await?;
-            Ok(response.result.name)
-        }
+        debug!("Update request: {request:?}");
+        cf_client.request(&request).await?.result.name
     } else {
         let request = CreateDnsRecord {
             zone_identifier,
             params: CreateDnsRecordParams {
                 name,
-                content: DnsContent::TXT {
-                    content: content.to_string(),
-                },
+                content: txt_content,
                 priority: None,
                 proxied: None,
                 ttl: None,
             },
         };
-        debug!("Request: {request:?}");
-        if dry_run {
-            info!("Dry run enabled, not creating record");
-            Ok(name.to_string())
-        } else {
-            let response = cf_client.request(&request).await?;
-            Ok(response.result.name)
-        }
-    }
+        debug!("Create request: {request:?}");
+        cf_client.request(&request).await?.result.name
+    };
+
+    Ok(result_name)
 }
 
-/// Helper function to check the DNFS usage agreement
+/// Checks that the domain has a valid DNFS usage agreement TXT record.
+///
+/// The domain must have a `_dnfs-agreement` TXT record with the exact
+/// required agreement text.
 ///
 /// # Errors
-/// Returns an error if the TXT record is not found or if the content doesn't match
+///
+/// Returns an error if:
+/// - The TXT record lookup fails
+/// - The agreement record is missing or has incorrect content
 pub async fn check_usage_agreement(domain_name: &str, resolver: &TokioResolver) -> Result<()> {
     debug!("Checking DNFS usage agreement for {domain_name}");
-    let usage_agreement_host = format!("_dnfs-agreement.{domain_name}");
-    let usage_agreement = resolver.txt_lookup(usage_agreement_host.clone()).await?;
+    let agreement_host = format!("_dnfs-agreement.{domain_name}");
+    let lookup_result = resolver.txt_lookup(&agreement_host).await?;
 
-    usage_agreement
+    let agreement_found = lookup_result
         .iter()
         .flat_map(TXT::txt_data)
-        .find_map(|txt_data| {
-            std::str::from_utf8(txt_data).ok().and_then(|s| {
-                if s.eq(USAGE_AGREEMENT) {
-                    debug!("Valid DNFS usage agreement found");
-                    Some(Ok(()))
-                } else {
-                    warn!("Found TXT record, but it doesn't match. Found: {s}");
-                    None
-                }
-            })
+        .filter_map(|data| std::str::from_utf8(data).ok())
+        .any(|txt| txt == USAGE_AGREEMENT);
+
+    if agreement_found {
+        debug!("Valid DNFS usage agreement found for {domain_name}");
+        Ok(())
+    } else {
+        warn!("DNFS usage agreement not found or invalid for {domain_name}");
+        Err(DnfsError::InvalidUsageAgreement {
+            domain: domain_name.to_string(),
         })
-        .unwrap_or_else(|| Err(DNFSError::InvalidUsageAgreement(usage_agreement_host).into()))
+    }
 }
