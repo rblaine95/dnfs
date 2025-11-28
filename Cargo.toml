@@ -8,6 +8,8 @@ pedantic = { level = "deny", priority = -1 }
 unwrap_used = "deny"
 
 [workspace.dependencies]
+aes-gcm = "0.10"
+argon2 = "0.5"
 base64 = "0.22.1"
 clap = { version = "4.5", features = ["derive"] }
 cloudflare = { version = "0.14", features = ["rustls-tls"] }
@@ -19,8 +21,8 @@ hickory-resolver = { version = "0.25", features = [
   "tokio",
   "webpki-roots",
 ] }
-magic-crypt = "4.0"
 mime_guess = "2.0"
+rand = "0.9"
 securefmt = "0.1"
 serde = "1.0"
 serde_derive = "1.0"

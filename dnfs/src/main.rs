@@ -16,7 +16,9 @@ use cloudflare::framework::{
 };
 use color_eyre::eyre::Result;
 use config::Config;
-use dnfs_lib::{DEFAULT_CONCURRENCY, File, FileRecord, check_usage_agreement, get_all_files};
+use dnfs_lib::{
+    DEFAULT_CONCURRENCY, Encryptor, File, FileRecord, check_usage_agreement, get_all_files,
+};
 use hickory_resolver::{
     TokioResolver,
     config::{ResolverConfig, ResolverOpts},
@@ -229,11 +231,11 @@ async fn run_command(
     Ok(())
 }
 
-/// Gets the encryption key if encryption is requested.
-fn get_encryption_key(
-    config: &Config,
-    encrypt: bool,
-) -> Result<Option<magic_crypt::MagicCrypt256>> {
+/// Gets the encryptor if encryption is requested.
+///
+/// Creates an AES-256-GCM encryptor with key derived from the config's
+/// `encryption_key` using Argon2id with the domain name as salt.
+fn get_encryption_key(config: &Config, encrypt: bool) -> Result<Option<Encryptor>> {
     if !encrypt {
         return Ok(None);
     }
@@ -242,7 +244,7 @@ fn get_encryption_key(
         color_eyre::eyre::eyre!("Encryption requested but no encryption_key in config")
     })?;
 
-    Ok(Some(magic_crypt::new_magic_crypt!(key, 256)))
+    Ok(Some(Encryptor::new(key, &config.dnfs.domain_name)?))
 }
 
 /// Prompts the user to confirm the purge operation.
@@ -273,7 +275,7 @@ mod tests {
     };
 
     use super::Config;
-    use dnfs_lib::{DEFAULT_CONCURRENCY, File, check_usage_agreement};
+    use dnfs_lib::{DEFAULT_CONCURRENCY, Encryptor, File, check_usage_agreement};
 
     fn create_test_resolver() -> TokioResolver {
         TokioResolver::builder_with_config(
@@ -321,14 +323,15 @@ mod tests {
 
         let file = File::new(Path::new("../test.txt")).expect("File should be created");
 
-        let encryption = Some(magic_crypt::new_magic_crypt!("test", 256));
+        let encryptor =
+            Encryptor::new("test", "bunkerlab.net").expect("Encryptor should be created");
 
         let result = file
             .upload(
                 &cf_client,
                 &config.cloudflare.zone_id,
                 &config.dnfs.domain_name,
-                encryption.as_ref(),
+                Some(&encryptor),
                 DEFAULT_CONCURRENCY,
                 false,
             )
@@ -341,9 +344,10 @@ mod tests {
     async fn test_file_download() {
         let resolver = create_test_resolver();
         let file_fqdn = "test.dnfs.bunkerlab.net";
-        let encryption = Some(magic_crypt::new_magic_crypt!("test", 256));
+        let encryptor =
+            Encryptor::new("test", "bunkerlab.net").expect("Encryptor should be created");
 
-        let result = File::read(file_fqdn, &resolver, encryption.as_ref()).await;
+        let result = File::read(file_fqdn, &resolver, Some(&encryptor)).await;
         assert!(result.is_ok(), "Download should succeed");
 
         let file = result.expect("File should be present");

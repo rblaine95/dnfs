@@ -15,11 +15,11 @@ use cloudflare::framework::client::async_api;
 use futures::stream::{self, StreamExt};
 use heck::ToKebabCase;
 use hickory_resolver::{TokioResolver, proto::rr::rdata::TXT};
-use magic_crypt::MagicCryptTrait;
 use securefmt::Debug;
 use tracing::debug;
 
 use crate::{
+    crypto::Encryptor,
     file_record::FileRecord,
     helpers::{DEFAULT_CONCURRENCY, DnfsError, MAX_CHUNK_SIZE, Result, write_txt_record},
 };
@@ -119,7 +119,7 @@ impl File {
         cf_client: &async_api::Client,
         zone_identifier: &str,
         domain_name: &str,
-        magic_crypt: Option<&magic_crypt::MagicCrypt256>,
+        encryptor: Option<&Encryptor>,
         concurrency: usize,
         dry_run: bool,
     ) -> Result<String> {
@@ -133,7 +133,7 @@ impl File {
             zone_identifier,
             domain_name,
             &file_record,
-            magic_crypt,
+            encryptor,
             concurrency,
             dry_run,
         )
@@ -150,7 +150,7 @@ impl File {
         zone_identifier: &str,
         domain_name: &str,
         file_record: &FileRecord,
-        magic_crypt: Option<&magic_crypt::MagicCrypt256>,
+        encryptor: Option<&Encryptor>,
         concurrency: usize,
         dry_run: bool,
     ) -> Result<Vec<String>> {
@@ -168,13 +168,14 @@ impl File {
                 );
                 let zone_id = zone_identifier.to_string();
 
-                let encoded_data = match magic_crypt {
-                    Some(mc) => mc.encrypt_bytes_to_base64(&chunk.data),
-                    None => BASE64_STANDARD.encode(&chunk.data),
+                let encoded_data = match encryptor {
+                    Some(enc) => enc.encrypt_to_base64(&chunk.data),
+                    None => Ok(BASE64_STANDARD.encode(&chunk.data)),
                 };
 
                 async move {
-                    write_txt_record(&chunk_fqdn, &encoded_data, cf_client, &zone_id, dry_run).await
+                    let data = encoded_data?;
+                    write_txt_record(&chunk_fqdn, &data, cf_client, &zone_id, dry_run).await
                 }
             })
             .buffer_unordered(concurrency)
@@ -198,13 +199,13 @@ impl File {
     pub async fn read(
         file_fqdn: &str,
         resolver: &TokioResolver,
-        magic_crypt: Option<&magic_crypt::MagicCrypt256>,
+        encryptor: Option<&Encryptor>,
     ) -> Result<Self> {
         debug!("Reading file: {file_fqdn}");
 
         let file_record = FileRecord::from_dns_record(file_fqdn, resolver).await?;
         let file_chunks =
-            Self::download_chunks(file_fqdn, &file_record, resolver, magic_crypt).await?;
+            Self::download_chunks(file_fqdn, &file_record, resolver, encryptor).await?;
 
         // Reassemble compressed data
         let compressed_data: Vec<u8> = file_chunks
@@ -279,7 +280,7 @@ impl File {
         file_fqdn: &str,
         file_record: &FileRecord,
         resolver: &TokioResolver,
-        magic_crypt: Option<&magic_crypt::MagicCrypt256>,
+        encryptor: Option<&Encryptor>,
     ) -> Result<Vec<Chunk>> {
         debug!("Downloading chunks for: {file_fqdn}");
 
@@ -310,10 +311,8 @@ impl File {
 
             debug!("Chunk data length: {}", chunk_data.len());
 
-            let data = match magic_crypt {
-                Some(mc) => mc
-                    .decrypt_base64_to_bytes(&chunk_data)
-                    .map_err(|e| DnfsError::EncryptionError(e.to_string()))?,
+            let data = match encryptor {
+                Some(enc) => enc.decrypt_from_base64(&chunk_data)?,
                 None => BASE64_STANDARD.decode(&chunk_data)?,
             };
 
