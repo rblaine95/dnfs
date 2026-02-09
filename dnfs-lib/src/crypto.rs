@@ -18,7 +18,7 @@ use aes_gcm::{
 };
 use argon2::{Argon2, Params};
 use base64::prelude::*;
-use rand::Rng;
+use rand::RngExt;
 
 use crate::error::DnfsError;
 
