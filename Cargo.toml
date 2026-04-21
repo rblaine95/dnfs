@@ -16,7 +16,7 @@ cloudflare = { version = "0.14", features = ["rustls-tls"] }
 color-eyre = "0.6"
 futures = "0.3"
 heck = "0.5"
-hickory-resolver = { version = "0.25", features = [
+hickory-resolver = { version = "0.26", features = [
   "https-ring",
   "tokio",
   "webpki-roots",
