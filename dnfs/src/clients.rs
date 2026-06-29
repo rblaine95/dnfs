@@ -12,8 +12,8 @@ use cloudflare::framework::{
 use color_eyre::eyre::Result;
 use hickory_resolver::{
     TokioResolver,
-    config::{ResolverConfig, ResolverOpts},
-    name_server::TokioConnectionProvider,
+    config::{CLOUDFLARE, ResolverConfig, ResolverOpts},
+    net::runtime::TokioRuntimeProvider,
 };
 
 use crate::config::Config;
@@ -21,14 +21,18 @@ use crate::config::Config;
 /// Creates a DNS resolver using Cloudflare's DNS-over-HTTPS.
 ///
 /// This resolver is used to look up DNFS records from DNS.
-#[must_use]
-pub fn create_resolver() -> TokioResolver {
-    TokioResolver::builder_with_config(
-        ResolverConfig::cloudflare_https(),
-        TokioConnectionProvider::default(),
+///
+/// # Errors
+///
+/// Returns an error if the resolver cannot be constructed.
+pub fn create_resolver() -> Result<TokioResolver> {
+    let resolver = TokioResolver::builder_with_config(
+        ResolverConfig::https(&CLOUDFLARE),
+        TokioRuntimeProvider::default(),
     )
     .with_options(ResolverOpts::default())
-    .build()
+    .build()?;
+    Ok(resolver)
 }
 
 /// Creates a Cloudflare API client.

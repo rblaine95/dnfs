@@ -35,7 +35,7 @@ async fn main() -> Result<()> {
     let config = Config::load(Path::new("config.toml"))?;
     debug!("Config loaded: {config:?}");
 
-    let resolver = create_resolver();
+    let resolver = create_resolver()?;
     let cf_client = create_cloudflare_client(&config)?;
 
     // Verify usage agreement

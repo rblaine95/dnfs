@@ -12,7 +12,7 @@ use cloudflare::{
     },
     framework::client::async_api,
 };
-use hickory_resolver::{TokioResolver, proto::rr::rdata::TXT};
+use hickory_resolver::{TokioResolver, proto::rr::RData};
 use tracing::{debug, info, warn};
 
 use crate::error::DnfsError;
@@ -165,8 +165,13 @@ pub async fn check_usage_agreement(
     let lookup_result = resolver.txt_lookup(&agreement_host).await?;
 
     let agreement_found = lookup_result
+        .answers()
         .iter()
-        .flat_map(TXT::txt_data)
+        .filter_map(|record| match &record.data {
+            RData::TXT(txt) => Some(txt),
+            _ => None,
+        })
+        .flat_map(|txt| txt.txt_data.iter())
         .filter_map(|data| std::str::from_utf8(data).ok())
         .any(|txt| txt == USAGE_AGREEMENT);
 

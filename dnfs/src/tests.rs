@@ -21,14 +21,14 @@ fn test_config_loading() {
 #[tokio::test]
 async fn test_usage_agreement_valid() {
     let config = Config::load(Path::new("../config.toml")).expect("Config should be loaded");
-    let resolver = create_resolver();
+    let resolver = create_resolver().expect("Resolver should be created");
     let result = check_usage_agreement(&config.dnfs.domain_name, &resolver).await;
     assert!(result.is_ok(), "Valid domain should pass agreement check");
 }
 
 #[tokio::test]
 async fn test_usage_agreement_invalid() {
-    let resolver = create_resolver();
+    let resolver = create_resolver().expect("Resolver should be created");
     let result = check_usage_agreement("example.com", &resolver).await;
     assert!(result.is_err(), "Domain without agreement should fail");
 }
@@ -66,7 +66,7 @@ async fn test_file_upload() {
 
 #[tokio::test]
 async fn test_file_download() {
-    let resolver = create_resolver();
+    let resolver = create_resolver().expect("Resolver should be created");
     let file_fqdn = "test.dnfs.bunkerlab.net";
     let encryptor = Encryptor::new("test", "bunkerlab.net").expect("Encryptor should be created");
 

@@ -14,7 +14,7 @@ use base64::prelude::*;
 use cloudflare::framework::client::async_api;
 use futures::stream::{self, StreamExt};
 use heck::ToKebabCase;
-use hickory_resolver::{TokioResolver, proto::rr::rdata::TXT};
+use hickory_resolver::{TokioResolver, proto::rr::RData};
 use securefmt::Debug;
 use tracing::debug;
 
@@ -356,14 +356,19 @@ impl File {
         let mut chunks = Vec::with_capacity(file_record.chunks);
 
         for i in 0..file_record.chunks {
-            let chunk_fqdn = format!("chunk{i}.{}.dnfs.{domain_name}", file_record.name,);
+            let chunk_fqdn = format!("chunk{i}.{}.dnfs.{domain_name}", file_record.name);
             debug!("Reading chunk: {chunk_fqdn}");
 
             let chunk_lookup = resolver.txt_lookup(&chunk_fqdn).await?;
 
             let chunk_data: String = chunk_lookup
+                .answers()
                 .iter()
-                .flat_map(TXT::txt_data)
+                .filter_map(|record| match &record.data {
+                    RData::TXT(txt) => Some(txt),
+                    _ => None,
+                })
+                .flat_map(|txt| txt.txt_data.iter())
                 .filter_map(|data| std::str::from_utf8(data).ok())
                 .collect();
 

@@ -77,8 +77,8 @@ impl Encryptor {
     /// ```
     pub fn new(password: &str, salt: &str) -> Result<Self, DnfsError> {
         let key_bytes = derive_key(password, salt)?;
-        let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
-        let cipher = Aes256Gcm::new(key);
+        let key = Key::<Aes256Gcm>::from(key_bytes);
+        let cipher = Aes256Gcm::new(&key);
 
         Ok(Self { cipher })
     }
@@ -93,11 +93,11 @@ impl Encryptor {
     pub fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, DnfsError> {
         // Generate a random nonce for each encryption
         let nonce_bytes: [u8; NONCE_SIZE] = rand::rng().random();
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let nonce = Nonce::from(nonce_bytes);
 
         let ciphertext = self
             .cipher
-            .encrypt(nonce, plaintext)
+            .encrypt(&nonce, plaintext)
             .map_err(|e| DnfsError::Encryption(e.to_string()))?;
 
         // Prepend nonce to ciphertext
@@ -125,10 +125,11 @@ impl Encryptor {
         }
 
         let (nonce_bytes, encrypted_data) = ciphertext.split_at(NONCE_SIZE);
-        let nonce = Nonce::from_slice(nonce_bytes);
+        let nonce = Nonce::try_from(nonce_bytes)
+            .map_err(|_| DnfsError::Encryption("invalid nonce length".to_string()))?;
 
         self.cipher
-            .decrypt(nonce, encrypted_data)
+            .decrypt(&nonce, encrypted_data)
             .map_err(|e| DnfsError::Encryption(format!("Decryption failed: {e}")))
     }
 

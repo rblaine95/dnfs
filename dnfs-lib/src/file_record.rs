@@ -7,7 +7,7 @@
 
 use cloudflare::{endpoints::dns::dns::DeleteDnsRecord, framework::client::async_api};
 use futures::stream::{self, StreamExt};
-use hickory_resolver::{TokioResolver, proto::rr::rdata::TXT};
+use hickory_resolver::{TokioResolver, proto::rr::RData};
 use securefmt::Debug;
 use tracing::{debug, info};
 
@@ -191,8 +191,13 @@ impl FileRecord {
     ) -> Result<Self, DnfsError> {
         let file_lookup = resolver.txt_lookup(file_fqdn).await?;
         let file_txt = file_lookup
+            .answers()
             .iter()
-            .flat_map(TXT::txt_data)
+            .filter_map(|record| match &record.data {
+                RData::TXT(txt) => Some(txt),
+                _ => None,
+            })
+            .flat_map(|txt| txt.txt_data.iter())
             .find_map(|txt_data| std::str::from_utf8(txt_data).ok())
             .ok_or_else(|| DnfsError::ParseError {
                 name: file_fqdn.to_string(),

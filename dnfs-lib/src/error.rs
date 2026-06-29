@@ -61,7 +61,7 @@ pub enum DnfsError {
 
     /// DNS lookup error.
     #[error("DNS lookup failed: {0}")]
-    DnsLookup(#[from] hickory_resolver::ResolveError),
+    DnsLookup(#[from] hickory_resolver::net::NetError),
 
     /// Cloudflare API error.
     #[error("Cloudflare API error: {0}")]
