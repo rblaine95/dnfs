@@ -9,7 +9,7 @@ unwrap_used = "deny"
 
 [workspace.dependencies]
 aes-gcm = "0.11"
-argon2 = "0.5"
+argon2 = "0.6"
 base64 = "0.23.0"
 clap = { version = "4.6", features = ["derive"] }
 cloudflare = { version = "0.14", features = ["rustls-tls"] }
